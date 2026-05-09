@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: ai-route-planner
+
+  profiles:
+    active: mock
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd HH:mm:ss
+
+server:
+  port: 8080
+
+# ──────────────────────────────────────────────
+# DeepSeek LLM 配置 (OpenAI 兼容接口)
+# ──────────────────────────────────────────────
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${DEEPSEEK_API_KEY:sk-f159def9d5344341bafaea5f56fde07a}
+      model-name: ${LLM_MODEL:deepseek-chat}
+      base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
+      temperature: 0.1
+      timeout: 60000
+      max-retries: 2
+      log-requests: false
+      log-responses: false
+    streaming-chat-model:
+      api-key: ${DEEPSEEK_API_KEY:sk-f159def9d5344341bafaea5f56fde07a}
+      model-name: ${LLM_MODEL:deepseek-chat}
+      base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
+      temperature: 0.1
+
+# ──────────────────────────────────────────────
+# 美团开放平台配置 (用于实时商户/街道数据)
+# ──────────────────────────────────────────────
+meituan:
+  api:
+    token: ${MEITUAN_API_TOKEN:03e504ec186d18269d1fbdbb4d7f9090996c0e505a49bc845dd00e5ed472c8c6}
+    base-url: https://api-open.meituan.com
+    dianping-base-url: https://api.dianping.com/v1
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+# Mock profile (default) — 使用本地 JSON 数据
+spring:
+  config:
+    activate:
+      on-profile: mock
+
+meituan:
+  enabled: false
+
+---
+# 美团 API profile — 使用实时数据
+spring:
+  config:
+    activate:
+      on-profile: dianping
+
+meituan:
+  enabled: true
