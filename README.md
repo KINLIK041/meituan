@@ -80,7 +80,7 @@ sequenceDiagram
 
 | 组件 | 技术 | 版本 |
 |------|------|------|
-| 语言 | Java | 24 |
+| 语言 | Java | 21 |
 | 框架 | Spring Boot (WebFlux) | 3.4.4 |
 | 图算法 | JGraphT | 1.5.2 |
 | LLM 集成 | LangChain4j | 1.0.0-beta3 |
@@ -92,14 +92,14 @@ sequenceDiagram
 
 ### 前提条件
 
-- JDK 24（开启预览特性）
+- JDK 21
 - Maven 3.9+
 
 ### 1. 编译
 
 ```bash
-# 确保使用 Java 24
-java --version  # 应显示 24
+# 确保使用 Java 21
+java --version  # 应显示 21
 
 # 编译
 mvn clean compile
@@ -116,7 +116,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dianping
 
 # 或直接运行 jar
 mvn clean package -DskipTests
-java --enable-preview -jar target/route-planner-1.0.0.jar
+java -jar target/route-planner-1.0.0.jar
 ```
 
 ### 3. Docker 部署
@@ -271,7 +271,7 @@ src/main/java/com/meituan/route
 4. **约束验证**：硬约束（时间窗）剪枝，软约束（预算、评分、排队）加权评分
 5. **冲突消解**：逐级放松软约束，先降低优先级最低的约束，再放大预算上限
 
-## Java 24 新特性运用
+## Java 21 新特性运用
 
 - **Records**：所有领域模型（`POI`、`Route`、`Constraint`、`UserIntent`）使用 record 类型
 - **Virtual Threads**：通过 `Schedulers.boundedElastic()` 在 WebFlux 中启用虚拟线程

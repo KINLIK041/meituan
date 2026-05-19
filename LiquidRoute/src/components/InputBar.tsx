@@ -30,6 +30,13 @@ const InputBar: React.FC<InputBarProps> = ({
         placeholderTextColor="rgba(128, 128, 128, 0.6)"
         returnKeyType="search"
         onSubmitEditing={onSubmit}
+        keyboardType="default"
+        autoFocus={false}
+        clearButtonMode="while-editing"
+        autoComplete="off"
+        autoCorrect={false}
+        autoCapitalize="none"
+        textContentType="none"
       />
       <TouchableOpacity style={styles.micButton} onPress={() => {}}>
         <Text style={styles.micIcon}>🎤</Text>
@@ -55,6 +62,7 @@ const styles = StyleSheet.create({
     color: '#000',
     paddingVertical: 12,
     fontFamily: 'System',
+    textAlignVertical: 'center',
   },
   micButton: {
     width: 36,

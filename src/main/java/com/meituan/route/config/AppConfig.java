@@ -9,9 +9,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsWebFilter;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * Application-wide configuration.
@@ -22,7 +26,7 @@ public class AppConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AppConfig.class);
 
-    @Value("${langchain4j.open-ai.chat-model.api-key:sk-f159def9d5344341bafaea5f56fde07a}")
+    @Value("${langchain4j.open-ai.chat-model.api-key:sk-3f7053c82b7b4089b82ce3c2cec4d627}")
     private String deepseekApiKey;
 
     @Value("${langchain4j.open-ai.chat-model.base-url:https://api.deepseek.com/v1}")
@@ -47,6 +51,19 @@ public class AppConfig {
     @Bean
     public WebClient.Builder webClientBuilder() {
         return WebClient.builder();
+    }
+
+    @Bean
+    public CorsWebFilter corsWebFilter() {
+        var config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+        var source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return new CorsWebFilter(source);
     }
 
     /**

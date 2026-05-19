@@ -2,6 +2,7 @@ package com.meituan.route.orchestrator;
 
 import com.meituan.route.agent.*;
 import com.meituan.route.model.Route;
+import com.meituan.route.model.UserIntent;
 import com.meituan.route.solver.ConstraintEngine;
 import com.meituan.route.state.SessionStateManager;
 import org.slf4j.Logger;
@@ -12,7 +13,6 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.StructuredTaskScope;
 import java.util.stream.Collectors;
 
 /**
@@ -52,58 +52,77 @@ public class RoutePlannerOrchestrator {
 
     /**
      * Full pipeline: plan a route from natural language query.
+     * Runs LLM intent parsing and speculative POI discovery in parallel
+     * to cut total latency nearly in half (max(LLM, API) vs LLM+API).
      */
     public Mono<PlanResponse> planRoute(String query, String sessionId) {
-        return Mono.fromCallable(() -> {
-            log.info("Orchestrator: starting route plan for '{}'", query);
+        log.info("Orchestrator: starting route plan for '{}'", query);
 
-            // Step 1: ConversationAgent — parse intent
-            var convResult = conversationAgent.process(query, sessionId);
-            var intent = convResult.intent();
-            var actualSessionId = convResult.sessionId();
+        // Start speculative discovery immediately (broad Beijing search)
+        // while the LLM parses intent in parallel.
+        var broadIntent = DiscoveryAgent.broadIntent("北京");
+        var speculativeDiscovery = discoveryAgent.discover(broadIntent)
+                .subscribeOn(Schedulers.boundedElastic());
 
-            // Step 2: DiscoveryAgent — find POIs (parallel fetch)
-            var discoveryMono = discoveryAgent.discover(intent);
+        // LLM intent parsing runs on its own scheduler
+        return Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(convResult -> {
+                    var intent = convResult.intent();
+                    var actualSessionId = convResult.sessionId();
 
-            // Step 3: Chain PlanningAgent → ConstraintAgent → ExplanationAgent
-            return discoveryMono.flatMap(discovery -> {
-                // Step 3: PlanningAgent — generate routes
-                var planResult = planningAgent.plan(discovery, intent, null);
+                    // Use speculative results for Beijing, re-discover for other cities
+                    var city = intent.city() != null ? intent.city() : "北京";
+                    var discoveryMono = "北京".equals(city)
+                            ? speculativeDiscovery
+                            : discoveryAgent.discover(intent).subscribeOn(Schedulers.boundedElastic());
 
-                if (!planResult.hasRoutes()) {
-                    return Mono.just(new PlanResponse(actualSessionId, List.of(),
-                            planResult.warning() != null ? planResult.warning() : "无法生成路线方案",
-                            null, ""));
-                }
+                    return discoveryMono.flatMap(discovery -> {
+                        // If speculative, filter for the actual intent categories
+                        var effectiveDiscovery = "北京".equals(city) && hasSpecificCategories(intent)
+                                ? discoveryAgent.filterForIntent(discovery, intent)
+                                : discovery;
 
-                // Step 4: ConstraintAgent — validate and score
-                var constraints = constraintEngine.buildConstraints(intent, discovery.candidates());
-                var constraintReport = constraintAgent.analyze(planResult.routes(), constraints, intent);
+                        // Step 3: PlanningAgent — generate routes
+                        var planResult = planningAgent.plan(effectiveDiscovery, intent, null);
 
-                // Store route snapshots
-                for (var route : planResult.routes()) {
-                    sessionManager.addSnapshot(actualSessionId, route, intent);
-                }
+                        if (!planResult.hasRoutes()) {
+                            return Mono.just(new PlanResponse(actualSessionId, List.of(),
+                                    planResult.warning() != null ? planResult.warning() : "无法生成路线方案",
+                                    null, ""));
+                        }
 
-                // Step 5: ExplanationAgent — generate explanations
-                var explanation = explanationAgent.explain(planResult.routes(), intent);
+                        // Step 4: ConstraintAgent — validate and score
+                        var constraints = constraintEngine.buildConstraints(intent, effectiveDiscovery.candidates());
+                        var constraintReport = constraintAgent.analyze(planResult.routes(), constraints, intent);
 
-                // Build response
-                var routes = planResult.routes();
-                var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
+                        // Store route snapshots
+                        for (var route : planResult.routes()) {
+                            sessionManager.addSnapshot(actualSessionId, route, intent);
+                        }
 
-                return Mono.just(new PlanResponse(
-                        actualSessionId,
-                        routes,
-                        warning,
-                        constraintReport.bestRoute(),
-                        explanation.comparisonHtml()
-                ));
-            });
-        })
-        .flatMap(m -> m)
-        .subscribeOn(Schedulers.boundedElastic())
-        .timeout(Duration.ofSeconds(10));
+                        // Step 5: ExplanationAgent — generate explanations
+                        var explanation = explanationAgent.explain(planResult.routes(), intent);
+
+                        // Build response
+                        var routes = planResult.routes();
+                        var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
+
+                        return Mono.just(new PlanResponse(
+                                actualSessionId,
+                                routes,
+                                warning,
+                                constraintReport.bestRoute(),
+                                explanation.comparisonHtml()
+                        ));
+                    });
+                })
+                .timeout(Duration.ofSeconds(30));
+    }
+
+    private boolean hasSpecificCategories(UserIntent intent) {
+        var cats = intent.preferredCategories();
+        return cats != null && !cats.isEmpty();
     }
 
     /**
@@ -173,7 +192,7 @@ public class RoutePlannerOrchestrator {
         })
         .flatMap(m -> m)
         .subscribeOn(Schedulers.boundedElastic())
-        .timeout(Duration.ofSeconds(10));
+        .timeout(Duration.ofSeconds(30));
     }
 
     /**

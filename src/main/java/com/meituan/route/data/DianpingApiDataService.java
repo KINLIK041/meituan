@@ -17,6 +17,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +43,7 @@ public class DianpingApiDataService implements DataService {
     private final WebClient meituanClient;
     private final WebClient dianpingClient;
     private final String apiToken;
+    private final GaodeGeoService gaodeGeoService;
     private final Map<String, List<POI>> cache = new ConcurrentHashMap<>();
 
     // Dianping API category codes -> our category mapping
@@ -64,8 +66,10 @@ public class DianpingApiDataService implements DataService {
             WebClient.Builder builder,
             @Value("${meituan.api.token}") String apiToken,
             @Value("${meituan.api.base-url}") String meituanBaseUrl,
-            @Value("${meituan.api.dianping-base-url}") String dianpingBaseUrl) {
+            @Value("${meituan.api.dianping-base-url}") String dianpingBaseUrl,
+            GaodeGeoService gaodeGeoService) {
         this.apiToken = apiToken;
+        this.gaodeGeoService = gaodeGeoService;
         this.meituanClient = builder
                 .baseUrl(meituanBaseUrl)
                 .defaultHeader("Authorization", "Bearer " + apiToken)
@@ -82,6 +86,19 @@ public class DianpingApiDataService implements DataService {
     void init() {
         log.info("DianpingApiDataService activated — connecting to Meituan Open Platform");
         log.info("API endpoint: {}", meituanClient.toString());
+        // Pre-fetch Beijing POIs in background for faster first request
+        new Thread(() -> {
+            log.info("Pre-fetching Beijing POI data...");
+            var beijingCategories = List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT");
+            for (String cat : beijingCategories) {
+                searchByCategory("北京", null, cat)
+                        .collectList()
+                        .subscribe(
+                                pois -> log.info("Pre-fetched {} POIs for category={} in Beijing", pois.size(), cat),
+                                err -> log.warn("Pre-fetch failed for category={} in Beijing: {}", cat, err.getMessage())
+                        );
+            }
+        }, "beijing-prefetch").start();
     }
 
     @Override
@@ -101,6 +118,7 @@ public class DianpingApiDataService implements DataService {
 
         return callMeituanPoiSearch(city, query, 1, 30)
                 .flatMapMany(response -> parsePoiResponse(response, city))
+                .flatMap(pois -> pois.isEmpty() ? searchWithGaode(city, query) : Mono.just(pois))
                 .doOnNext(pois -> cache.put(cacheKey, pois))
                 .flatMap(Flux::fromIterable);
     }
@@ -118,6 +136,7 @@ public class DianpingApiDataService implements DataService {
 
         return callMeituanPoiSearch(city, query, 1, 30)
                 .flatMapMany(response -> parsePoiResponse(response, city))
+                .flatMap(pois -> pois.isEmpty() ? searchWithGaode(city, query) : Mono.just(pois))
                 .doOnNext(pois -> cache.put(cacheKey, pois))
                 .flatMap(Flux::fromIterable);
     }
@@ -130,6 +149,7 @@ public class DianpingApiDataService implements DataService {
         String query = district != null ? district + " 美食" : "美食";
         return callMeituanPoiSearch(city, query, 1, 30)
                 .flatMapMany(response -> parsePoiResponse(response, city))
+                .flatMap(pois -> pois.isEmpty() ? searchWithGaode(city, query) : Mono.just(pois))
                 .flatMap(Flux::fromIterable)
                 .filter(poi -> poi.avgCost() <= maxCost || poi.avgCost() == 0);
     }
@@ -149,7 +169,7 @@ public class DianpingApiDataService implements DataService {
         log.info("Calling Meituan API: findById id={}", id);
         return callMeituanPoiDetail(id)
                 .flatMap(response -> parsePoiDetail(response))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(3))
                 .onErrorResume(e -> {
                     log.warn("Failed to fetch POI detail: {}", e.getMessage());
                     return Mono.empty();
@@ -166,11 +186,12 @@ public class DianpingApiDataService implements DataService {
 
         log.info("Calling Meituan API: getAllByCity city={}", city);
 
-        // Search multiple categories in parallel
+        // Search multiple categories in parallel with Gaode fallback
         var categories = List.of("美食", "购物", "景点", "娱乐", "文化");
         var poifFlux = Flux.merge(categories.stream()
                 .map(cat -> callMeituanPoiSearch(city, cat, 1, 20)
                         .flatMapMany(response -> parsePoiResponse(response, city))
+                        .flatMap(pois -> pois.isEmpty() ? searchWithGaode(city, cat) : Mono.just(pois))
                         .flatMap(Flux::fromIterable))
                 .toList())
                 .distinct(POI::id)
@@ -192,6 +213,7 @@ public class DianpingApiDataService implements DataService {
 
         return callMeituanPoiSearch(city, district, 1, 30)
                 .flatMapMany(response -> parsePoiResponse(response, city))
+                .flatMap(pois -> pois.isEmpty() ? searchWithGaode(city, district) : Mono.just(pois))
                 .doOnNext(pois -> cache.put(cacheKey, pois))
                 .flatMap(Flux::fromIterable);
     }
@@ -230,7 +252,7 @@ public class DianpingApiDataService implements DataService {
                         .build())
                 .retrieve()
                 .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(3))
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.warn("Meituan API error ({}), falling back to Dianping API: {}",
                             e.getStatusCode(), e.getMessage());
@@ -260,7 +282,7 @@ public class DianpingApiDataService implements DataService {
                         .build())
                 .retrieve()
                 .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(3))
                 .onErrorResume(e -> {
                     log.error("Dianping API also unavailable: {}", e.getMessage());
                     return Mono.just(Map.of("status", "error", "msg", e.getMessage()));
@@ -280,7 +302,7 @@ public class DianpingApiDataService implements DataService {
                         .build())
                 .retrieve()
                 .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(3))
                 .onErrorResume(e -> {
                     log.warn("Meituan POI detail API error: {}", e.getMessage());
                     return Mono.just(Map.of("status", "error", "msg", e.getMessage()));
@@ -408,6 +430,66 @@ public class DianpingApiDataService implements DataService {
             log.warn("Failed to map POI from API item: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Fallback to Gaode POI search when Dianping APIs are unavailable.
+     */
+    @SuppressWarnings("unchecked")
+    private Mono<List<POI>> searchWithGaode(String city, String keyword) {
+        log.info("Falling back to Gaode POI search: city={}, keyword={}", city, keyword);
+        // Use Beijing center coordinates as default
+        double lng = 116.3972;
+        double lat = 39.9163;
+
+        return gaodeGeoService.searchNearby(keyword, null, city, lng, lat, 20000)
+                .map(gaodeResults -> {
+                    List<POI> pois = new ArrayList<>();
+                    for (var item : gaodeResults) {
+                        try {
+                            var id = String.valueOf(item.getOrDefault("id", "gaode_" + pois.size()));
+                            var name = String.valueOf(item.getOrDefault("name", ""));
+                            var address = String.valueOf(item.getOrDefault("address", ""));
+                            var location = String.valueOf(item.getOrDefault("location", "0,0"));
+                            var lngLat = location.split(",");
+                            double pLng = lngLat.length >= 1 ? Double.parseDouble(lngLat[0]) : lng;
+                            double pLat = lngLat.length >= 2 ? Double.parseDouble(lngLat[1]) : lat;
+                            var type = String.valueOf(item.getOrDefault("type", ""));
+                            var bizType = String.valueOf(item.getOrDefault("biz_type", ""));
+                            var bizExt = (Map<String, Object>) item.get("biz_ext");
+                            double rating = 0;
+                            double avgCost = 0;
+                            if (bizExt != null) {
+                                try { rating = Double.parseDouble(String.valueOf(bizExt.getOrDefault("rating", "0"))); } catch (Exception ignored) {}
+                                try { avgCost = Double.parseDouble(String.valueOf(bizExt.getOrDefault("cost", "0"))); } catch (Exception ignored) {}
+                            }
+
+                            var category = mapCategory(type.isEmpty() ? bizType : type);
+                            var dist = String.valueOf(item.getOrDefault("distance", ""));
+                            var distVal = 0;
+                            if (!dist.isEmpty() && !"[]".equals(dist)) {
+                                try { distVal = Integer.parseInt(dist); } catch (Exception ignored) {}
+                            }
+
+                            pois.add(new POI(
+                                    "gaode_" + id, name, category, type,
+                                    pLat, pLng, address, "", city,
+                                    rating, avgCost, 0,
+                                    LocalTime.of(8, 0), LocalTime.of(22, 0),
+                                    estimateVisitDuration(category),
+                                    List.of(), "", "", 50.0
+                            ));
+                        } catch (Exception e) {
+                            // skip malformed Gaode result
+                        }
+                    }
+                    log.info("Gaode fallback returned {} POIs for keyword={}", pois.size(), keyword);
+                    return pois;
+                })
+                .onErrorResume(e -> {
+                    log.warn("Gaode fallback also failed: {}", e.getMessage());
+                    return Mono.just(List.<POI>of());
+                });
     }
 
     // ──────────────────────────────────────────────

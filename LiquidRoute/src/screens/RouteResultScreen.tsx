@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import RouteCard from '../components/RouteCard';
+import RouteMap from '../components/RouteMap';
 import Timeline from '../components/Timeline';
 import { mockData, routeApi } from '../services/api';
 import type { Route } from '../types';
@@ -99,7 +100,7 @@ const RouteResultScreen: React.FC<RouteResultScreenProps> = ({
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.timelineHeader}>
-          <TouchableOpacity onPress={() => setShowTimeline(false)}>
+          <TouchableOpacity onPress={() => setShowTimeline(false)} style={styles.backButtonHitArea} hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
             <Text style={styles.backButton}>← 返回</Text>
           </TouchableOpacity>
           <Text style={styles.timelineTitle}>详细日程</Text>
@@ -116,7 +117,7 @@ const RouteResultScreen: React.FC<RouteResultScreenProps> = ({
 
       {/* 顶栏 */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={onBack}>
+        <TouchableOpacity onPress={onBack} style={styles.backButtonHitArea} hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
           <Text style={styles.backButton}>← 返回</Text>
         </TouchableOpacity>
         <Text style={styles.title}>路线方案</Text>
@@ -150,113 +151,124 @@ const RouteResultScreen: React.FC<RouteResultScreenProps> = ({
         </View>
       </View>
 
-      {/* 方案选择标签 */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tagScroll}
-        contentContainerStyle={styles.tagContainer}
-      >
-        {allPlans.map((plan, index) => (
-          <TouchableOpacity
-            key={plan.id}
-            style={[
-              styles.tag,
-              selectedIndex === index && styles.tagActive,
-            ]}
-            onPress={() => handleCardSelect(index)}
-          >
-            <View
-              style={[
-                styles.tagDot,
-                {
-                  backgroundColor:
-                    selectedIndex === index ? '#8B5CF6' : '#ccc',
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.tagLabel,
-                selectedIndex === index && styles.tagLabelActive,
-              ]}
-            >
-              {plan.optimizationGoal === 'BEST_EXPERIENCE'
-                ? '体验优先'
-                : plan.optimizationGoal === 'FASTEST'
-                ? '最省时'
-                : '最省钱'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* 卡片流 */}
-      <View style={styles.cardContainer}>
-        <FlatList
-          ref={flatListRef}
-          data={allPlans}
+      {/* 可滚动内容区 */}
+      <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
+        {/* 方案选择标签 */}
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          snapToInterval={336}
-          decelerationRate="fast"
-          onMomentumScrollEnd={e => {
-            const index = Math.round(
-              e.nativeEvent.contentOffset.x / 336
-            );
-            if (index !== selectedIndex) {
-              setSelectedIndex(index);
-            }
-          }}
-          renderItem={({ item, index }) => (
-            <View style={styles.cardWrapper}>
-              <RouteCard
-                route={item}
-                isSelected={index === selectedIndex}
-                onPress={() => {
-                  setSelectedIndex(index);
-                  setShowTimeline(true);
-                }}
+          style={styles.tagScroll}
+          contentContainerStyle={styles.tagContainer}
+        >
+          {allPlans.map((plan, index) => (
+            <TouchableOpacity
+              key={plan.id}
+              style={[
+                styles.tag,
+                selectedIndex === index && styles.tagActive,
+              ]}
+              onPress={() => handleCardSelect(index)}
+            >
+              <View
+                style={[
+                  styles.tagDot,
+                  {
+                    backgroundColor:
+                      selectedIndex === index ? '#8B5CF6' : '#ccc',
+                  },
+                ]}
               />
-            </View>
-          )}
-          keyExtractor={item => item.id}
-        />
-      </View>
+              <Text
+                style={[
+                  styles.tagLabel,
+                  selectedIndex === index && styles.tagLabelActive,
+                ]}
+              >
+                {plan.optimizationGoal === 'BEST_EXPERIENCE'
+                  ? '体验优先'
+                  : plan.optimizationGoal === 'FASTEST'
+                  ? '最省时'
+                  : '最省钱'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-      {/* 推荐理由 */}
-      {currentPlan && (
-        <View style={styles.explanation}>
-          <Text style={styles.explanationText}>{currentPlan.description}</Text>
-        </View>
-      )}
+        {/* 地图 */}
+        {currentPlan && currentPlan.segments.length > 0 && (
+          <View style={styles.mapContainer}>
+            <RouteMap route={currentPlan} interactive={false} />
+          </View>
+        )}
 
-      {/* 调整输入 */}
-      <View style={styles.adjustmentRow}>
-        <View style={styles.adjustmentInputContainer}>
-          <TextInput
-            style={styles.adjustmentInput}
-            value={adjustmentText}
-            onChangeText={setAdjustmentText}
-            placeholder="换一家不用排队的咖啡店"
-            placeholderTextColor="rgba(128,128,128,0.6)"
-            returnKeyType="send"
-            onSubmitEditing={handleAdjust}
+        {/* 卡片流 */}
+        <View style={styles.cardContainer}>
+          <FlatList
+            ref={flatListRef}
+            data={allPlans}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={336}
+            decelerationRate="fast"
+            nestedScrollEnabled
+            onMomentumScrollEnd={e => {
+              const index = Math.round(
+                e.nativeEvent.contentOffset.x / 336
+              );
+              if (index !== selectedIndex) {
+                setSelectedIndex(index);
+              }
+            }}
+            renderItem={({ item, index }) => (
+              <View style={styles.cardWrapper}>
+                <RouteCard
+                  route={item}
+                  isSelected={index === selectedIndex}
+                  onPress={() => {
+                    setSelectedIndex(index);
+                    setShowTimeline(true);
+                  }}
+                />
+              </View>
+            )}
+            keyExtractor={item => item.id}
           />
         </View>
-        <TouchableOpacity
-          style={[
-            styles.adjustButton,
-            !adjustmentText.trim() && styles.adjustButtonDisabled,
-          ]}
-          onPress={handleAdjust}
-          disabled={!adjustmentText.trim() || adjusting}
-        >
-          <Text style={styles.adjustButtonText}>
-            {adjusting ? '...' : '调整'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+
+        {/* 推荐理由 */}
+        {currentPlan && (
+          <View style={styles.explanation}>
+            <Text style={styles.explanationText}>{currentPlan.description}</Text>
+          </View>
+        )}
+
+        {/* 调整输入 */}
+        <View style={styles.adjustmentRow}>
+          <View style={styles.adjustmentInputContainer}>
+            <TextInput
+              style={styles.adjustmentInput}
+              value={adjustmentText}
+              onChangeText={setAdjustmentText}
+              placeholder="换一家不用排队的咖啡店"
+              placeholderTextColor="rgba(128,128,128,0.6)"
+              returnKeyType="send"
+              onSubmitEditing={handleAdjust}
+            />
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.adjustButton,
+              !adjustmentText.trim() && styles.adjustButtonDisabled,
+            ]}
+            onPress={handleAdjust}
+            disabled={!adjustmentText.trim() || adjusting}
+          >
+            <Text style={styles.adjustButtonText}>
+              {adjusting ? '...' : '调整'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {/* 底部操作栏 */}
       <View style={styles.bottomBar}>
@@ -289,6 +301,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
+  backButtonHitArea: {
+    padding: 8,
+  },
   backButton: {
     fontSize: 17,
     color: '#8B5CF6',
@@ -313,6 +328,10 @@ const styles = StyleSheet.create({
   tagScroll: {
     maxHeight: 44,
     marginTop: 8,
+    marginBottom: 0,
+  },
+  contentScroll: {
+    flex: 1,
   },
   tagContainer: {
     paddingHorizontal: 20,
@@ -347,8 +366,19 @@ const styles = StyleSheet.create({
     color: '#8B5CF6',
     fontWeight: '600',
   },
+  mapContainer: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   cardContainer: {
-    flex: 1,
+    height: 370,
     marginTop: 12,
   },
   cardWrapper: {
