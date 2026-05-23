@@ -4,6 +4,7 @@ import com.meituan.route.model.UserIntent;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalTime;
@@ -24,6 +25,7 @@ public class IntentParser {
 
     private final ChatLanguageModel chatModel;
     private final boolean llmAvailable;
+    private final boolean mockProfile;
 
     private static final Pattern BUDGET_PATTERN = Pattern.compile("预算(\\d+)");
     private static final Pattern RATING_PATTERN = Pattern.compile("评分[以至少高于大于等于]*([\\d.]+)");
@@ -53,10 +55,11 @@ public class IntentParser {
             Map.entry("静安寺", "静安寺"), Map.entry("浦东", "浦东")
     );
 
-    public IntentParser(Optional<ChatLanguageModel> chatModel) {
+    public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env) {
         this.chatModel = chatModel.orElse(null);
-        this.llmAvailable = this.chatModel != null;
-        log.info("IntentParser initialized (LLM: {})", llmAvailable ? "enabled" : "disabled (using rules)");
+        this.mockProfile = java.util.Arrays.asList(env.getActiveProfiles()).contains("mock");
+        this.llmAvailable = this.chatModel != null && !mockProfile;
+        log.info("IntentParser initialized (LLM: {}, mock: {})", llmAvailable ? "enabled" : "disabled", mockProfile);
     }
 
     /**
@@ -86,33 +89,11 @@ public class IntentParser {
      */
     private UserIntent parseWithLLM(String query, String sessionId) {
         var prompt = """
-                你是一个智能路线规划系统的意图解析器。请从用户的自然语言查询中提取以下结构化信息，以JSON格式返回（只返回JSON，不要其他文字）：
-
-                用户查询: "%s"
-
-                需要提取的字段：
-                {
-                  "city": "城市名（北京/上海/等，从查询推断）",
-                  "district": "区域/商圈名（如三里屯、国贸、外滩，没有则null）",
-                  "categories": ["类别数组，可选值: RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE"],
-                  "cuisine": "菜系偏好（如日料、火锅、烤鸭，没有则null）",
-                  "startTime": "开始时间（HH:MM格式，从上下文推断，默认14:00）",
-                  "endTime": "结束时间（HH:MM格式，默认22:00）",
-                  "budget": "预算上限（数字，没有则0）",
-                  "partySize": "人数（数字，默认2）",
-                  "minRating": "最低评分（数字，默认3.5）",
-                  "maxQueue": "最长排队时间（分钟，不排队则填0，默认30）",
-                  "travelMode": "出行方式（WALKING或DRIVING）",
-                  "goal": "优化目标（BEST_EXPERIENCE/FASTEST/CHEAPEST）",
-                  "keywords": ["关键词数组，如拍照好看、约会、亲子"],
-                  "specialRequest": "特殊要求（如少走路、拍照好看，没有则null）"
-                }
-
-                注意：
-                - "逛街""购物"→SHOPPING，"吃""美食""日料""火锅"→RESTAURANT，"电影""娱乐"→ENTERTAINMENT
-                - "少走路"→travelMode=WALKING，"开车"→DRIVING
-                - "省钱"→goal=CHEAPEST，"省时"→goal=FASTEST
-                """.formatted(query);
+从查询提取JSON（只返回JSON）：
+查询: "%s"
+字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认14:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
+示例: {"city":"北京","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
+""".formatted(query);
 
         var json = chatModel.chat(prompt);
 

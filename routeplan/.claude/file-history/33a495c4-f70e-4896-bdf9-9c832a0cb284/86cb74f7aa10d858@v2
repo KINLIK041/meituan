@@ -1,0 +1,79 @@
+package com.meituan.route.data;
+
+import com.meituan.route.model.POI;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.util.List;
+
+/**
+ * Real Dianping API data service. Activated when Spring profile 'dianping' is active.
+ * Falls back gracefully when API is unavailable.
+ */
+@Service
+@ConditionalOnExpression("#{environment.getActiveProfiles().length > 0 && " +
+        "environment.getActiveProfiles()[0].equals('dianping')}")
+@Primary
+public class DianpingApiDataService implements DataService {
+
+    private static final Logger log = LoggerFactory.getLogger(DianpingApiDataService.class);
+    private final WebClient webClient;
+
+    public DianpingApiDataService(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("https://api.dianping.com/v2").build();
+    }
+
+    @PostConstruct
+    void init() {
+        log.info("DianpingApiDataService activated — connecting to Dianping Open API");
+    }
+
+    @Override
+    public Flux<POI> searchByCategory(String city, String district, String category) {
+        // In production: call Dianping API with proper auth
+        log.warn("Dianping API call would be made here — returning empty fallback");
+        return Flux.empty();
+    }
+
+    @Override
+    public Flux<POI> searchByKeyword(String city, String district, String keyword) {
+        return Flux.empty();
+    }
+
+    @Override
+    public Flux<POI> searchWithinBudget(String city, String district, double maxCost) {
+        return Flux.empty();
+    }
+
+    @Override
+    public Mono<POI> findById(String id) {
+        return Mono.empty();
+    }
+
+    @Override
+    public Flux<POI> getAllByCity(String city) {
+        return Flux.empty();
+    }
+
+    @Override
+    public Flux<POI> getByDistrict(String city, String district) {
+        return Flux.empty();
+    }
+
+    @Override
+    public List<String> getAvailableCities() {
+        return List.of("北京", "上海");
+    }
+
+    @Override
+    public List<String> getAvailableDistricts(String city) {
+        return List.of();
+    }
+}

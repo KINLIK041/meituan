@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(Get-ChildItem -Path \".\" -Recurse -Filter \"package.json\" -Depth 1)",
-      "Bash(Select-Object FullName)",
-      "Bash(dir *)"
-    ]
-  }
-}

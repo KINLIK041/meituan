@@ -1,0 +1,8 @@
+{
+  "id": "14",
+  "subject": "Create TypeScript type definitions matching backend models",
+  "description": "Create types/index.ts with POI, Route, RouteSegment etc matching Java backend",
+  "status": "completed",
+  "blocks": [],
+  "blockedBy": []
+}

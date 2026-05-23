@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: ai-route-planner
+
+  # Default profile: mock data
+  profiles:
+    active: mock
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd HH:mm:ss
+
+server:
+  port: 8080
+
+# LangChain4j LLM configuration
+# Default: OpenAI-compatible endpoint (can switch to Meituan internal model)
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY:demo-key}
+      model-name: ${LLM_MODEL:gpt-4}
+      temperature: 0.1
+      timeout: 30000
+      max-retries: 2
+      log-requests: false
+      log-responses: false
+    streaming-chat-model:
+      api-key: ${OPENAI_API_KEY:demo-key}
+      model-name: ${LLM_MODEL:gpt-4}
+      temperature: 0.1
+
+# Dianping API configuration (used when profile=dianping)
+dianping:
+  api:
+    key: ${DIANPING_API_KEY:}
+    secret: ${DIANPING_API_SECRET:}
+    base-url: https://api.dianping.com/v2
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+# Mock profile (default)
+spring:
+  config:
+    activate:
+      on-profile: mock
+
+dianping:
+  enabled: false
+
+---
+# Dianping API profile
+spring:
+  config:
+    activate:
+      on-profile: dianping
+
+dianping:
+  enabled: true

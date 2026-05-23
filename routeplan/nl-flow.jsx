@@ -43,7 +43,7 @@ function analyzeNL(text) {
     time:   /现在|马上|今天|明天|后天|本周|周[一二三四五六日末天]|下午|晚上|上午|早上|中午|傍晚|分钟[内后]|小时[内后]|下班|出发|点钟|\d+点/.test(t),
     place:  /附近|地铁|商圈|公司|家|当前|这边|那边|路上|店里|[\u4e00-\u9fa5]{2,4}(?:站|商圈|公园|大厦)|三里屯|国贸|大悦城|后海|簋街|王府井|五道口|中关村|西单|南锣鼓巷|什刹海|工体|蓝色港湾/.test(t),
     budget: /人均|预算|\d+\s*[元块]|¥|￥|以内|左右|便宜|低价|不限/.test(t),
-    mood:   /吃|喝|玩|逛|拍|聊|看|展|安静|出片|热闹|放松|暖|热|凉|休息/.test(t),
+    mood:   /吃|喝|玩|逛|拍|聊|看|展|安静|出片|热闹|放松|暖|热|凉|休息|少走|便宜|不排队|地铁|省钱|口味|换一|不吵|拍照|步行/.test(t),
   };
   const filledCount = Object.values(has).filter(Boolean).length;
 
@@ -79,6 +79,32 @@ function analyzeNL(text) {
     raw: t,
     questions: buildFollowupQuestions({ has }),
   };
+}
+
+// ─── Adjustment intent detector ─────────────────────────────────
+// When the user types a short query that looks like a route adjustment
+// (e.g. "少走一点路"), skip NL pipeline and treat as chip adjustment.
+function detectAdjustmentIntent(text) {
+  const t = (text || '').trim();
+  const ADJUSTMENTS = [
+    { keys: ['少走', '不想走', '走路少', '少走点', '不想走太多', '少步行', '不走路'], label: '少走路' },
+    { keys: ['便宜', '省钱', '不贵', '低预算', '少花', '便宜点', '少花钱', '预算低'], label: '更便宜' },
+    { keys: ['不排队', '不等', '不想等', '不等位', '不等候', '少排队', '不排'], label: '不想排队' },
+    { keys: ['拍照', '出片', '好看', '上镜', '更出片', '拍出来', '适合拍照'], label: '更出片' },
+    { keys: ['地铁', '公交', '公共交通', '坐地铁', '搭地铁', '地铁方便'], label: '地铁优先' },
+    { keys: ['换', '换个', '换一种', '换换', '换个口味', '口味'], label: '换个口味' },
+    { keys: ['安静', '清净', '不吵', '安静点', '更安静', '安静些', '不嘈杂'], label: '更安静' },
+    { keys: ['快', '省时', '快点', '快速', '效率', '高效', '赶时间'], label: '更省时' },
+  ];
+  for (var i = 0; i < ADJUSTMENTS.length; i++) {
+    var adj = ADJUSTMENTS[i];
+    for (var j = 0; j < adj.keys.length; j++) {
+      if (t.indexOf(adj.keys[j]) !== -1) {
+        return { isAdjustment: true, chipLabel: adj.label };
+      }
+    }
+  }
+  return null;
 }
 
 function detectScene(t) {
@@ -380,7 +406,7 @@ function ChipAdjustmentSummary({ chip }) {
 }
 
 Object.assign(window, {
-  analyzeNL, nlLoadingText,
+  analyzeNL, detectAdjustmentIntent, nlLoadingText,
   FollowupCard, ConflictCard,
   AssumptionBanner, CompleteSummary, ConflictSummary, FollowupSummary,
   ChipAdjustmentSummary,

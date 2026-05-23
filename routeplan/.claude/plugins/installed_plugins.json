@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "plugins": {
+    "example-skills@anthropic-agent-skills": [
+      {
+        "scope": "user",
+        "installPath": "D:\\claude code\\.claude\\plugins\\cache\\anthropic-agent-skills\\example-skills\\f458cee31a75",
+        "version": "f458cee31a75",
+        "installedAt": "2026-05-10T03:34:13.307Z",
+        "lastUpdated": "2026-05-10T03:34:13.307Z",
+        "gitCommitSha": "f458cee31a7577a47ba0c9a101976fa599385174"
+      }
+    ]
+  }
+}

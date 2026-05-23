@@ -3,43 +3,118 @@
 const { useState: useStateChat, useEffect: useEffectChat, useRef: useRefChat } = React;
 
 // ─── Top bar ───────────────────────────────────────────────────
-function ChatTopBar({ onOpenHistory, historyCount }) {
+function ChatTopBar({ city, onCityClick, onOpenHistory, historyCount, onOpenFavorites }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '8px 12px 10px', background: '#F7F7F8',
-      borderBottom: '1px solid rgba(0,0,0,0.04)'
+      display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center',
+      padding: '10px 14px', background: '#F7F7F8',
+      borderBottom: '1px solid rgba(0,0,0,0.04)', minHeight: 44,
     }}>
-      <button style={{
-        display: 'flex', alignItems: 'center', gap: 3,
-        background: 'transparent', border: 'none', cursor: 'pointer',
-        padding: '4px 6px', color: '#1a1a1a', fontSize: 14, fontWeight: 500
-      }}>
-        <Icon name="MapPin" size={14} color="#1a1a1a" />
-        <span>北京</span>
-        <Icon name="ChevronDown" size={13} color="#8e8e93" />
-      </button>
-      <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a1a' }}>路线助手</div>
-      <button onClick={onOpenHistory} style={{
-        position: 'relative',
-        background: 'transparent', border: 'none', cursor: 'pointer',
-        padding: 6, lineHeight: 0
-      }}>
-        <Icon name="Clock" size={18} color="#1d1d1f" />
-        {historyCount > 0 && (
-          <span className="num" style={{
-            position: 'absolute', top: 2, right: 0,
-            minWidth: 14, height: 14, padding: '0 4px',
-            background: '#FF6633', color: '#fff',
-            fontSize: 9, fontWeight: 700,
-            borderRadius: 999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            lineHeight: 1,
-          }}>{historyCount}</span>
-        )}
-      </button>
+      {/* Left: city selector */}
+      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <button onClick={onCityClick} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          background: '#fff', border: '1px solid #E8E8EA', borderRadius: 20,
+          cursor: 'pointer', padding: '5px 12px', color: '#1a1a1a', fontSize: 13, fontWeight: 500,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}>
+          <Icon name="MapPin" size={13} color="#FF6633" />
+          <span>{city || '北京'}</span>
+          <Icon name="ChevronDown" size={12} color="#8e8e93" />
+        </button>
+      </div>
+
+      {/* Center: title */}
+      <div style={{ fontWeight: 700, fontSize: 17, color: '#1a1a1a', textAlign: 'center', letterSpacing: -0.3 }}>
+        路线助手
+      </div>
+
+      {/* Right: icon buttons — Dianping style */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+        <button onClick={onOpenFavorites} style={{
+          width: 34, height: 34, borderRadius: 999,
+          background: '#fff', border: '1px solid #E8E8EA',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 0, lineHeight: 0,
+        }}>
+          <Icon name="Bookmark" size={16} color="#1d1d1f" />
+        </button>
+        <button onClick={onOpenHistory} style={{
+          position: 'relative',
+          width: 34, height: 34, borderRadius: 999,
+          background: '#fff', border: '1px solid #E8E8EA',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 0, lineHeight: 0,
+        }}>
+          <Icon name="Clock" size={16} color="#1d1d1f" />
+          {historyCount > 0 && (
+            <span className="num" style={{
+              position: 'absolute', top: -2, right: -4,
+              minWidth: 14, height: 14, padding: '0 4px',
+              background: '#FF6633', color: '#fff',
+              fontSize: 9, fontWeight: 700,
+              borderRadius: 999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              lineHeight: 1,
+            }}>{historyCount}</span>
+          )}
+        </button>
+      </div>
     </div>);
 
+}
+
+// ─── City picker bottom sheet ──────────────────────────────────
+const CITIES = [
+  { name: '北京', district: '朝阳·海淀·东城' },
+  { name: '上海', district: '黄浦·浦东·静安' },
+];
+
+function CityPickerSheet({ open, currentCity, onSelect, onClose }) {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} className="fade-up" style={{
+      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
+      zIndex: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 420, maxHeight: '50%',
+        background: '#fff', borderRadius: '20px 20px 0 0',
+        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        animation: 'sheetUp 0.24s ease-out'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 999, background: '#D1D1D6' }} />
+        </div>
+        <div style={{ padding: '6px 20px 12px', fontSize: 16, fontWeight: 700, color: '#1a1a1a' }}>
+          选择城市
+        </div>
+        <div style={{ padding: '0 16px 20px', overflowY: 'auto' }}>
+          {CITIES.map((c) => (
+            <button key={c.name} onClick={() => { onSelect(c.name); onClose(); }} style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '14px 12px', marginBottom: 8,
+              background: currentCity === c.name ? '#FFF1E5' : '#F7F7F8',
+              border: currentCity === c.name ? '1.5px solid #FFC8AA' : '1px solid #EDEDEF',
+              borderRadius: 12, cursor: 'pointer',
+            }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', textAlign: 'left' }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: '#8e8e93', textAlign: 'left', marginTop: 2 }}>{c.district}</div>
+              </div>
+              {currentCity === c.name && <Icon name="Check" size={18} color="#FF6633" />}
+            </button>
+          ))}
+        </div>
+      </div>
+      <style>{`
+        @keyframes sheetUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 // ─── Welcome panel (initial state) ─────────────────────────────
@@ -445,9 +520,27 @@ function ChatScreen({
   onNLFollowupAnswer, onConflictPriority,
   onAddMore, onOpenDetail, onNav, onAdjust, onSwap, onChip,
   history, historyOpen, onOpenHistory, onCloseHistory, onReplayHistory, onNewConversation,
+  city, onCityChange,
 }) {
   const [input, setInput] = useStateChat('');
+  const [cityPickerOpen, setCityPickerOpen] = useStateChat(false);
+  const [favoritesOpen, setFavoritesOpen] = useStateChat(false);
+  const [shareOpen, setShareOpen] = useStateChat(false);
+  const [shareRoute, setShareRoute] = useStateChat(null);
   const scrollRef = useRefChat(null);
+
+  // Wire up shared state for cross-component SharePanel access
+  useEffectChat(() => {
+    window._setShareOpen = function(open) {
+      setShareOpen(open);
+      if (!open) {
+        window._shareRoute = null;
+      } else {
+        setShareRoute(window._shareRoute);
+      }
+    };
+    return () => { delete window._setShareOpen; };
+  }, []);
 
   // auto-scroll to bottom on new messages
   useEffectChat(() => {
@@ -467,21 +560,77 @@ function ChatScreen({
   // Whether the conversation is on the NL (typed) path
   const isNLPath = !!chatState.userText;
   const stage = chatState.stage;
+  const convoMessages = chatState.conversationMessages || [];
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#F7F7F8' }}>
-      <ChatTopBar onOpenHistory={onOpenHistory} historyCount={(history || []).length} />
+      <ChatTopBar
+        city={city}
+        onCityClick={() => setCityPickerOpen(true)}
+        onOpenHistory={onOpenHistory}
+        historyCount={(history || []).length}
+        onOpenFavorites={() => setFavoritesOpen(true)}
+      />
+
+      <CityPickerSheet
+        open={cityPickerOpen}
+        currentCity={city || '北京'}
+        onSelect={(c) => { onCityChange && onCityChange(c); }}
+        onClose={() => setCityPickerOpen(false)}
+      />
 
       <div ref={scrollRef} className="frame-scroll" style={{
         flex: 1, overflowY: 'auto', overflowX: 'hidden',
         paddingBottom: 180,
       }}>
-        {/* welcome */}
-        {stage === 'welcome' && (
+        {/* ── Conversation message list (all past messages) ── */}
+        {convoMessages.length > 0 && (
+          <div style={{ padding: '12px 0 6px' }}>
+            {convoMessages.map(function(msg, idx) {
+              if (msg.type === 'user') {
+                return <UserBubble key={msg._key || idx} text={msg.text} />;
+              }
+              if (msg.type === 'route') {
+                return (
+                  <div key={msg._key || idx} style={{ marginBottom: 14 }}>
+                    {msg.chipLabel && (
+                      <div style={{ padding: '4px 20px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: 999,
+                          background: '#FF6633', color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Icon name="SlidersHorizontal" size={14} color="#fff" />
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a' }}>
+                          已按「{msg.chipLabel}」调整
+                        </span>
+                      </div>
+                    )}
+                    <RouteOptionsCard
+                      scene={msg.scene || '朋友聚会'}
+                      answers={msg.answers || {}}
+                      defaulted={!!msg.defaulted}
+                      routes={msg.routes || []}
+                      onOpenDetail={onOpenDetail}
+                      onSwap={null}
+                      onChip={null}
+                      readOnly={true}
+                    />
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
+
+        {/* ── Welcome (only when no conversation history) ── */}
+        {stage === 'welcome' && convoMessages.length === 0 && (
           <WelcomeBlock onPickScene={onPickScene} />
         )}
 
-        {/* scene-tap completing — NO user bubble */}
+        {/* ── Scene-tap completing ── */}
         {stage === 'completing' && (
           <>
             <div style={{ height: 6 }} />
@@ -498,74 +647,63 @@ function ChatScreen({
           </>
         )}
 
-        {/* NL paths — always start with user bubble */}
-        {isNLPath && stage !== 'welcome' && (
-          <>
-            <div style={{ height: 16 }} />
-            <UserBubble text={chatState.userText} />
-
-            {stage === 'nl_followup' && (
-              <FollowupCard
-                rawText={chatState.userText}
-                questions={chatState.nl.questions}
-                answers={chatState.answers}
-                onAnswer={onNLFollowupAnswer}
-              />
-            )}
-
-            {stage === 'nl_conflict' && (
-              <ConflictCard
-                scene={chatState.scene}
-                conditions={chatState.nl.conditions}
-                onPickPriority={onConflictPriority}
-              />
-            )}
-
-            {stage === 'generating' && (
-              <LoadingMsg text={loadingTextFor(chatState)} />
-            )}
-
-            {stage === 'route' && (
-              <RouteOptionsCard
-                scene={chatState.scene || '朋友聚会'}
-                answers={chatState.answers}
-                defaulted={chatState.defaulted}
-                summaryNode={buildSummaryNode(chatState)}
-                routes={chatState.routes}
-                onOpenDetail={onOpenDetail}
-                onSwap={onSwap}
-                onChip={onChip}
-              />
-            )}
-            <div style={{ height: 40 }} />
-          </>
+        {/* ── NL: followup questions ── */}
+        {isNLPath && stage === 'nl_followup' && (
+          <FollowupCard
+            rawText={chatState.userText}
+            questions={chatState.nl.questions}
+            answers={chatState.answers}
+            onAnswer={onNLFollowupAnswer}
+          />
         )}
 
-        {/* Scene-tap → generating / route — NO user bubble */}
-        {!isNLPath && (stage === 'generating' || stage === 'route') && (
+        {/* ── NL: conflict resolution ── */}
+        {isNLPath && stage === 'nl_conflict' && (
+          <ConflictCard
+            scene={chatState.scene}
+            conditions={chatState.nl.conditions}
+            onPickPriority={onConflictPriority}
+          />
+        )}
+
+        {/* ── Generating (both paths) ── */}
+        {stage === 'generating' && (
           <>
-            <div style={{ height: 8 }} />
-            <SystemPromptCard scene={chatState.scene} onChangeScene={onResetScene} />
-            {stage === 'generating' && (
+            {!isNLPath && convoMessages.length === 0 && (
               <>
                 <div style={{ height: 8 }} />
-                <LoadingMsg text={loadingTextFor(chatState)} />
+                <SystemPromptCard scene={chatState.scene} onChangeScene={onResetScene} />
+                <div style={{ height: 8 }} />
               </>
             )}
-            {stage === 'route' && (
-              <RouteOptionsCard
-                scene={chatState.scene}
-                answers={chatState.answers}
-                defaulted={chatState.defaulted}
-                routes={chatState.routes}
-                onOpenDetail={onOpenDetail}
-                onSwap={onSwap}
-                onChip={onChip}
-              />
-            )}
-            <div style={{ height: 40 }} />
+            {!isNLPath && convoMessages.length > 0 && <div style={{ height: 8 }} />}
+            <LoadingMsg text={loadingTextFor(chatState)} />
           </>
         )}
+
+        {/* ── Route result (both paths) ── */}
+        {stage === 'route' && (
+          <>
+            {!isNLPath && convoMessages.length === 0 && (
+              <>
+                <div style={{ height: 8 }} />
+                <SystemPromptCard scene={chatState.scene} onChangeScene={onResetScene} />
+              </>
+            )}
+            <RouteOptionsCard
+              scene={chatState.scene || '朋友聚会'}
+              answers={chatState.answers}
+              defaulted={chatState.defaulted}
+              summaryNode={buildSummaryNode(chatState)}
+              routes={chatState.routes}
+              onOpenDetail={onOpenDetail}
+              onSwap={onSwap}
+              onChip={onChip}
+            />
+          </>
+        )}
+
+        <div style={{ height: 40 }} />
       </div>
 
       <Composer
@@ -584,8 +722,22 @@ function ChatScreen({
         onReplay={onReplayHistory}
         onNewConversation={onNewConversation}
       />
+      {window.FavoritesPanel && (
+        <window.FavoritesPanel
+          open={favoritesOpen}
+          onClose={() => setFavoritesOpen(false)}
+          onOpenDetail={onOpenDetail}
+        />
+      )}
+      {window.SharePanel && (
+        <window.SharePanel
+          open={shareOpen}
+          onClose={() => { setShareOpen(false); window._shareRoute = null; }}
+          route={shareRoute}
+        />
+      )}
     </div>
   );
 }
 
-Object.assign(window, { ChatScreen });
+Object.assign(window, { ChatScreen, ChatTopBar, CityPickerSheet, CITIES });

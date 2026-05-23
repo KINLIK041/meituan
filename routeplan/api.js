@@ -203,7 +203,8 @@ async function planWithFallback(query, scene, answers) {
 
 /**
  * Call adjustRoute with automatic mock fallback.
- * Fallback just returns the same routes (mock can't adjust).
+ * When backend is unavailable, reorder/filter mock routes based on chip label
+ * so the user sees a visible change instead of the same results.
  */
 async function adjustWithFallback(sessionId, adjustment, currentRoutes) {
   try {
@@ -212,12 +213,179 @@ async function adjustWithFallback(sessionId, adjustment, currentRoutes) {
   } catch (e) {
     console.warn('Backend API unavailable for adjust, using mock:', e.message);
   }
+
+  // Mock fallback: reorder based on chip label
+  var routes = (currentRoutes && currentRoutes.length > 0)
+    ? currentRoutes.slice()
+    : [];
+  if (routes.length === 0) {
+    // No current routes — fall back to ROUTE_OPTIONS
+    var allScenes = window.ROUTE_OPTIONS || {};
+    routes = allScenes['朋友聚会'] || [];
+  }
+
+  var label = (adjustment || '').trim();
+  var reordered = mockAdjustRoutes(routes, label);
+
   return {
-    sessionId: sessionId,
-    routes: currentRoutes || [],
+    sessionId: sessionId || ('mock-' + Date.now()),
+    routes: reordered,
     warning: null,
-    recommendedRoute: null,
+    recommendedRoute: reordered[0] || null,
   };
+}
+
+/** Reorder/filter routes based on chip label. */
+function parseTime(timeStr) {
+  if (!timeStr) return 999;
+  var hMatch = timeStr.match(/(\d+)\s*小时/);
+  var mMatch = timeStr.match(/(\d+)\s*分钟/);
+  var h = hMatch ? parseInt(hMatch[1], 10) : 0;
+  var m = mMatch ? parseInt(mMatch[1], 10) : 0;
+  return h * 60 + m;
+}
+
+function mockAdjustRoutes(routes, label) {
+  var arr = routes.slice();
+  if (arr.length <= 1) return arr;
+
+  switch (label) {
+    case '更便宜':
+      // Sort by total_avg ascending
+      arr.sort(function(a, b) { return (a.total_avg || 0) - (b.total_avg || 0); });
+      break;
+    case '少走路':
+      // Sort by total_distance — parse numeric value from "1.6km" format
+      arr.sort(function(a, b) {
+        var da = parseFloat((a.total_distance || '99km').replace(/[^0-9.]/g, '')) || 99;
+        var db = parseFloat((b.total_distance || '99km').replace(/[^0-9.]/g, '')) || 99;
+        return da - db;
+      });
+      break;
+    case '不想排队':
+      // Move routes with queue-related risks to the end
+      arr.sort(function(a, b) {
+        var aRisk = (a.risks || []).some(function(r) { return r.indexOf('排队') !== -1 || r.indexOf('等位') !== -1; }) ? 1 : 0;
+        var bRisk = (b.risks || []).some(function(r) { return r.indexOf('排队') !== -1 || r.indexOf('等位') !== -1; }) ? 1 : 0;
+        return aRisk - bRisk;
+      });
+      break;
+    case '更出片':
+      // Move photo-friendly routes to the front
+      arr.sort(function(a, b) {
+        var aPhoto = (a.positioning || '').indexOf('出片') !== -1 || (a.reason || '').indexOf('拍照') !== -1 || (a.reason || '').indexOf('出片') !== -1 ? 0 : 1;
+        var bPhoto = (b.positioning || '').indexOf('出片') !== -1 || (b.reason || '').indexOf('拍照') !== -1 || (b.reason || '').indexOf('出片') !== -1 ? 0 : 1;
+        return aPhoto - bPhoto;
+      });
+      break;
+    case '地铁优先':
+      // Move subway routes to front
+      arr.sort(function(a, b) {
+        var aSub = (a.transport || '').indexOf('地铁') !== -1 ? 0 : 1;
+        var bSub = (b.transport || '').indexOf('地铁') !== -1 ? 0 : 1;
+        return aSub - bSub;
+      });
+      break;
+    case '换个口味':
+      // Rotate — move first route to end
+      arr.push(arr.shift());
+      break;
+    case '更安静':
+      // Move routes with quiet/relaxed positioning to the front
+      arr.sort(function(a, b) {
+        var aQuiet = (a.reason || '').indexOf('安静') !== -1 || (a.positioning || '').indexOf('安静') !== -1 || (a.reason || '').indexOf('放松') !== -1 ? 0 : 1;
+        var bQuiet = (b.reason || '').indexOf('安静') !== -1 || (b.positioning || '').indexOf('安静') !== -1 || (b.reason || '').indexOf('放松') !== -1 ? 0 : 1;
+        return aQuiet - bQuiet;
+      });
+      break;
+    case '更省时':
+      // Sort by total_time — parse numeric minutes from "X 分钟" or "X 小时" format
+      arr.sort(function(a, b) {
+        var ta = parseTime(a.total_time) || 999;
+        var tb = parseTime(b.total_time) || 999;
+        return ta - tb;
+      });
+      break;
+    default:
+      break;
+  }
+  return arr;
+}
+
+// ─── Favorites API (with in-memory fallback) ───────────────────
+
+// Shared in-memory store — survives panel close/open within the session.
+// Falls back to this when backend is unavailable.
+window._favoritesStore = window._favoritesStore || [];
+var _favIdCounter = 1;
+
+async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, totalCost) {
+  var localEntry = {
+    id: 'local-' + (_favIdCounter++),
+    routeJson: JSON.stringify(routeData),
+    routeName: routeName || '',
+    scene: scene || '',
+    poiCount: poiCount || 0,
+    totalTime: totalTime || '',
+    totalCost: totalCost || 0,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    var res = await fetch(API_BASE + '/api/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        routeJson: localEntry.routeJson,
+        routeName: localEntry.routeName,
+        scene: localEntry.scene,
+        poiCount: localEntry.poiCount,
+        totalTime: localEntry.totalTime,
+        totalCost: localEntry.totalCost,
+      }),
+    });
+    if (!res.ok) throw new Error('Save failed: ' + res.status);
+    var serverEntry = await res.json();
+    window._favoritesStore.unshift(serverEntry);
+    return serverEntry;
+  } catch (e) {
+    console.warn('Favorites API unavailable, saving locally:', e.message);
+    window._favoritesStore.unshift(localEntry);
+    return localEntry;
+  }
+}
+
+async function getFavorites() {
+  try {
+    var res = await fetch(API_BASE + '/api/favorites');
+    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+    var serverData = await res.json();
+    // Merge: server data + any local-only entries not yet synced
+    var localIds = new Set(window._favoritesStore.filter(function(f) { return String(f.id).indexOf('local-') === 0; }).map(function(f) { return f.id; }));
+    if (localIds.size > 0) {
+      return window._favoritesStore;
+    }
+    window._favoritesStore = serverData || [];
+    return window._favoritesStore;
+  } catch (e) {
+    console.warn('Favorites API unavailable, using local store:', e.message);
+    return window._favoritesStore;
+  }
+}
+
+async function deleteFavorite(id) {
+  // Remove from local store immediately
+  window._favoritesStore = window._favoritesStore.filter(function(f) { return f.id != id; });
+  try {
+    if (String(id).indexOf('local-') === 0) {
+      return { success: true, id: id };
+    }
+    var res = await fetch(API_BASE + '/api/favorites/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed: ' + res.status);
+    return await res.json();
+  } catch (e) {
+    console.warn('Favorites API delete failed:', e.message);
+    return { success: true, id: id };
+  }
 }
 
 // ─── Exports ──────────────────────────────────────────────────────
@@ -226,7 +394,8 @@ Object.assign(window, {
   getSessionId, setSessionId,
   planRoute, adjustRoute,
   buildQueryFromScene,
-  planWithFallback, adjustWithFallback,
+  planWithFallback, adjustWithFallback, mockAdjustRoutes,
   mapRoute, mapPlanResponse,
   fmtDuration, fmtDistance,
+  saveFavorite, getFavorites, deleteFavorite,
 });

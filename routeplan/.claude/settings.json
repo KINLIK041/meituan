@@ -1,0 +1,24 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-07ce2d9b4ddc4a5692f68d34430c12e7",
+    "ANTHROPIC_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_REASONING_MODEL": "deepseek-v4-pro"
+  },
+  "includeCoAuthoredBy": false,
+  "extraKnownMarketplaces": {
+    "anthropic-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/skills"
+      }
+    }
+  },
+  "theme": "auto",
+  "enabledPlugins": {
+    "example-skills@anthropic-agent-skills": true
+  }
+}

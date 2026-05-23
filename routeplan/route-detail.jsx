@@ -3,6 +3,16 @@
 const { useState: useStateRD, useEffect: useEffectRD, useRef: useRefRD } = React;
 
 // ─── Build detail data from route (API or mock fallback) ────
+function deriveImages(imageUrl) {
+  if (!imageUrl) return [];
+  // If imageUrl ends with -1.jpg, derive -2, -3, -4 from the same base
+  var m = imageUrl.match(/^(.+)-1\.(jpg|png|webp)$/i);
+  if (m) {
+    return [1, 2, 3, 4].map(function(n) { return m[1] + '-' + n + '.' + m[2]; });
+  }
+  return [imageUrl];
+}
+
 function buildDetailData(route) {
   const hasRaw = route && route._raw && (route._raw.segments || []).length > 0;
 
@@ -32,6 +42,7 @@ function buildDetailData(route) {
         risk_tags: [],
         recommendation_reason: poi.description || '',
         imageUrl: poi.imageUrl || '',
+        images: poi.images || deriveImages(poi.imageUrl),
         address: poi.address || '',
         lng: poi.lng,
         lat: poi.lat,
@@ -89,19 +100,23 @@ function buildDetailData(route) {
     return { places: places, transport: transport, routeInfo: routeInfo, stationCount: places.length };
   }
 
-  // Fallback: use mock globals, but overlay the route name/title from the selected route
+  // Fallback: use mock globals, but look up POIs from the selected route
   var mockRoute = (window.MOCK_ROUTE ? Object.assign({}, window.MOCK_ROUTE) : {});
   if (route) {
     if (route.route_name) mockRoute.route_name = route.route_name;
     if (route.total_time) mockRoute.total_time = route.total_time;
     if (route.total_avg != null) mockRoute.total_avg_per_person = route.total_avg;
     if (route.total_distance) mockRoute.total_distance = route.total_distance;
+    // Attach scene info for getPlacesForRoute lookup
+    route._scene = route._scene || null;
   }
+  var places = (window.getPlacesForRoute && window.getPlacesForRoute(route))
+    || window.MOCK_PLACES || [];
   return {
-    places: window.MOCK_PLACES || [],
+    places: places,
     transport: window.MOCK_TRANSPORT || [],
     routeInfo: mockRoute,
-    stationCount: (window.MOCK_PLACES || []).length,
+    stationCount: places.length,
   };
 }
 
@@ -510,7 +525,13 @@ function ImageLightbox({ open, place, imgIdx, onClose, onNav }) {
 
   const pal = palettes[place.imgPalette || 0];
   const total = 4;
-  const hasImage = imgIdx === 0 && place.imageUrl && place.imageUrl.length > 0;
+  var imgSrc = '';
+  if (place && place.images && place.images[imgIdx]) {
+    imgSrc = place.images[imgIdx];
+  } else if (imgIdx === 0 && place && place.imageUrl && place.imageUrl.length > 0) {
+    imgSrc = place.imageUrl;
+  }
+  const hasImage = imgSrc.length > 0;
   return (
     <div onClick={onClose} className="fade-up" style={{
       position: 'absolute', inset: 0, background: 'rgba(15, 12, 8, 0.92)',
@@ -527,7 +548,7 @@ function ImageLightbox({ open, place, imgIdx, onClose, onNav }) {
         position: 'relative', overflow: 'hidden'
       }}>
         {hasImage ? (
-          <img src={place.imageUrl} alt={place.name} style={{
+          <img src={imgSrc} alt={place.name} style={{
             width: '100%', height: '100%', objectFit: 'contain',
             display: 'block'
           }} />
@@ -702,20 +723,21 @@ function PlaceBlock({ place, index, active, onClick, onDetail, onSwap, onImageOp
           className="frame-scroll">
 
           {[0, 1, 2, 3].map((i) => {
-            const hasRealImage = i === 0 && place.imageUrl && place.imageUrl.length > 0;
+            const imgSrc = (place.images && place.images[i]) || (i === 0 && place.imageUrl) || '';
+            const hasImg = imgSrc.length > 0;
             return (
           <button
             key={i}
             onClick={(e) => {e.stopPropagation();onImageOpen(place, i);}}
             style={{
               width: 78, height: 78, borderRadius: 9, flexShrink: 0,
-              background: hasRealImage ? '#E5E5EA' : `repeating-linear-gradient(135deg, ${pal[0]} 0 8px, ${pal[1]} 8px 16px)`,
-              cursor: 'zoom-in', border: i === 0 ? '1.5px solid #FF6633' : '1px solid #E8E8EA',
+              background: hasImg ? '#E5E5EA' : `repeating-linear-gradient(135deg, ${pal[0]} 0 8px, ${pal[1]} 8px 16px)`,
+              cursor: hasImg ? 'zoom-in' : 'default', border: i === 0 ? '1.5px solid #FF6633' : '1px solid #E8E8EA',
               padding: 0, scrollSnapAlign: 'start',
               position: 'relative', overflow: 'hidden'
             }}>
-              {hasRealImage ? (
-                <img src={place.imageUrl} alt={place.name} style={{
+              {hasImg ? (
+                <img src={imgSrc} alt={place.name} style={{
                   width: '100%', height: '100%', objectFit: 'cover',
                   display: 'block'
                 }} />
@@ -781,7 +803,7 @@ function TagSm({ tone = 'green', children }) {
 
 // ─── Inline transport connector (A → B, NOT a card) ────────────
 // Renders as a small chip flowing on the timeline rail, no border, transparent feel.
-function TransportConnector({ t, onToast }) {
+function TransportConnector({ t, onToast, onNavigate }) {
   const isMetro = t.mode && t.mode.includes('地铁');
   const isWalk = t.mode === '步行';
   const color = isMetro ? '#2456a6' : isWalk ? '#2c7a44' : '#48484A';
@@ -813,7 +835,7 @@ function TransportConnector({ t, onToast }) {
           }
         </span>
       </div>
-      <button onClick={(e) => {e.stopPropagation();onToast('已模拟跳转导航');}} style={{
+      <button onClick={(e) => {e.stopPropagation();onNavigate ? onNavigate() : onToast('已模拟跳转导航');}} style={{
         background: 'transparent', border: 'none', cursor: 'pointer',
         color: '#1a1a1a', fontSize: 12, fontWeight: 500,
         display: 'inline-flex', alignItems: 'center', gap: 1, padding: '4px 2px',
@@ -829,7 +851,7 @@ function TransportConnector({ t, onToast }) {
 // ─── Departure inline (origin → station 1) ─────────────────────
 // Compact two-row: pill+station on row 1, time/distance + 查看路线 on row 2,
 // so nothing wraps and items align cleanly against the rail.
-function DepartureInline({ t, onToast }) {
+function DepartureInline({ t, onToast, onNavigate }) {
   return (
     <div style={{ padding: '0 4px 0 0' }}>
       <div style={{
@@ -865,7 +887,7 @@ function DepartureInline({ t, onToast }) {
           <span style={{ color: '#D1D1D6' }}>/</span>
           <span>{t.distance}</span>
         </span>
-        <button onClick={(e) => {e.stopPropagation();onToast('已模拟跳转导航');}} style={{
+        <button onClick={(e) => {e.stopPropagation();onNavigate ? onNavigate() : onToast('已模拟跳转导航');}} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
           color: '#1a1a1a', fontSize: 12, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 1, padding: '2px 0',
@@ -881,7 +903,7 @@ function DepartureInline({ t, onToast }) {
 
 // ─── Vertical timeline with continuous left rail ───────────────
 // The rail unifies all stations + transport segments into a single A→B→C flow.
-function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail, registerCardRef, places, transport }) {
+function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail, registerCardRef, places, transport, onNavigateToMap }) {
   const p = places || window.MOCK_PLACES || [];
   const t = transport || window.MOCK_TRANSPORT || [];
   const RAIL_X = 18; // x-center of the rail
@@ -944,8 +966,8 @@ function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail,
               {/* connector content */}
               <div style={{ flex: 1, minWidth: 0, padding: '10px 0 10px' }}>
                 {isFirst ?
-                <DepartureInline t={dep} onToast={onToast} /> :
-                <TransportConnector t={transportBefore} onToast={onToast} />}
+                <DepartureInline t={dep} onToast={onToast} onNavigate={onNavigateToMap ? function() { onNavigateToMap(place); } : null} /> :
+                <TransportConnector t={transportBefore} onToast={onToast} onNavigate={onNavigateToMap ? function() { onNavigateToMap(place); } : null} />}
               </div>
             </div>
 
@@ -1009,7 +1031,11 @@ function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail,
             步行 5 分到地铁，打车约 ¥20
           </span>
         </div>
-        <button onClick={() => onToast('已模拟跳转返程导航')} style={{
+        <button onClick={() => {
+          var lastPlace = (places && places.length > 0) ? places[places.length - 1] : null;
+          if (onNavigateToMap && lastPlace) onNavigateToMap(lastPlace);
+          else onToast('已模拟跳转返程导航');
+        }} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
           color: '#1a1a1a', fontSize: 12, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 1, padding: '2px 0',
@@ -1063,15 +1089,18 @@ function PoiDetailSheet({ place, open, onClose, onNavigate }) {
         </div>
 
         {/* header image */}
+        {(() => {
+          const headerImg = (place.images && place.images[0]) || place.imageUrl;
+          return (
         <div style={{
           margin: '0 16px', height: 140, borderRadius: 12,
-          background: place.imageUrl
+          background: headerImg
             ? 'transparent'
             : 'linear-gradient(135deg, #FFE4D0, #FFD4B8)',
           overflow: 'hidden', position: 'relative'
         }}>
-          {place.imageUrl ? (
-            <img src={place.imageUrl} alt={place.name} style={{
+          {headerImg ? (
+            <img src={headerImg} alt={place.name} style={{
               width: '100%', height: '100%', objectFit: 'cover'
             }} />
           ) : (
@@ -1082,6 +1111,8 @@ function PoiDetailSheet({ place, open, onClose, onNavigate }) {
             }}>暂无图片</div>
           )}
         </div>
+          );
+        })()}
 
         {/* info */}
         <div style={{ padding: '14px 16px', overflowY: 'auto', flex: 1 }}>
@@ -1263,6 +1294,9 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
   const [showMapChooser, setShowMapChooser] = useStateRD(false);
   const [mapTarget, setMapTarget] = useStateRD(null);
   const [saved, setSaved] = useStateRD(false);
+  const [favId, setFavId] = useStateRD(null);
+  const [shareOpen, setShareOpen] = useStateRD(false);
+  const [shareRoute, setShareRoute] = useStateRD(null);
   const scrollRef = useRefRD(null);
   const cardRefs = useRefRD({});
 
@@ -1300,10 +1334,27 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
         onBack={onBack}
         saved={saved}
         onSave={() => {
-          setSaved((v) => !v);
-          handleToast(saved ? '已取消收藏' : '已收藏到我的路线');
+          if (saved) {
+            if (favId) window.deleteFavorite(favId).catch(function() {});
+            setSaved(false);
+            setFavId(null);
+            handleToast('已取消收藏');
+          } else {
+            var routeData = route || {};
+            var poiCount = (routeData.pois || []).length || (detail.places || []).length;
+            window.saveFavorite(routeData, routeInfo.route_name, routeData._scene || '', poiCount, routeInfo.total_time, routeInfo.total_avg_per_person || 0)
+              .then(function(data) {
+                setSaved(true);
+                setFavId(data.id);
+                handleToast('已加入收藏');
+              })
+              .catch(function() {
+                setSaved(true);
+                handleToast('已加入收藏');
+              });
+          }
         }}
-        onShare={() => handleToast('已打开分享面板')}
+        onShare={() => { setShareRoute(route); setShareOpen(true); }}
       />
 
       <div ref={scrollRef} className="frame-scroll" style={{
@@ -1337,7 +1388,8 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
           onToast={handleToast}
           onImageOpen={openImage}
           onOpenDetail={(place) => setDetailPlace(place)}
-          registerCardRef={registerCardRef} />
+          registerCardRef={registerCardRef}
+          onNavigateToMap={(place) => { setMapTarget(place); setShowMapChooser(true); }} />
 
 
         <div style={{
@@ -1368,9 +1420,16 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
         open={showMapChooser}
         onClose={() => setShowMapChooser(false)}
         targetPlace={mapTarget} />
+      {window.SharePanel && (
+        <window.SharePanel
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          route={shareRoute}
+        />
+      )}
 
     </div>);
 
 }
 
-Object.assign(window, { RouteDetailScreen, GaodeMap, MockMapFallback, buildDetailData, PoiDetailSheet, MapChooserSheet });
+Object.assign(window, { RouteDetailScreen, GaodeMap, MockMapFallback, buildDetailData, deriveImages, PoiDetailSheet, MapChooserSheet });

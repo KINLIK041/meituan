@@ -208,7 +208,13 @@ const MOCK_PLACES = [
   '这是这条路线的轻量起点，离地铁口 8 分钟。展厅不大，最近评价里很多人说"出片好看、不挤"，逛完正好饭点。',
   review_summary: '近 30 天里被提到最多的是「光线好」「适合拍照」「氛围安静」。',
   lng: 116.4600, lat: 39.9325,
-  imageUrl: 'images/stores/chenxi-exhibition.jpg',
+  imageUrl: 'images/stores/chenxi-exhibition-1.jpg',
+  images: [
+    'images/stores/chenxi-exhibition-1.jpg',
+    'images/stores/chenxi-exhibition-2.jpg',
+    'images/stores/chenxi-exhibition-3.jpg',
+    'images/stores/chenxi-exhibition-4.jpg',
+  ],
   address: '朝阳区团结湖北路3号',
   mock_x: 28, mock_y: 22
 },
@@ -232,7 +238,13 @@ const MOCK_PLACES = [
   '这家是路线主菜：人均 95，靠近地铁口，很多评价都说"分量足、适合一群人吃"。我把它放在你饭点会到的时间，已经预留好取号时间。',
   review_summary: '最近 30 天里高频提到「分量足」「服务热情」「适合多人」。',
   lng: 116.4655, lat: 39.9270,
-  imageUrl: 'images/stores/shanye-kaorou.jpg',
+  imageUrl: 'images/stores/shanye-kaorou-1.jpg',
+  images: [
+    'images/stores/shanye-kaorou-1.jpg',
+    'images/stores/shanye-kaorou-2.jpg',
+    'images/stores/shanye-kaorou-3.jpg',
+    'images/stores/shanye-kaorou-4.jpg',
+  ],
   address: '朝阳区团结湖南路12号',
   mock_x: 52, mock_y: 60
 },
@@ -256,7 +268,13 @@ const MOCK_PLACES = [
   '吃完走 6 分钟就到，环境安静，可以坐着继续聊天。最近评价里被提到最多的是"提拉米苏"和"窗边位"。',
   review_summary: '常被提到「氛围好」「适合两三人慢聊」「不催台」。',
   lng: 116.4625, lat: 39.9310,
-  imageUrl: 'images/stores/mandao-dessert.jpg',
+  imageUrl: 'images/stores/mandao-dessert-1.jpg',
+  images: [
+    'images/stores/mandao-dessert-1.jpg',
+    'images/stores/mandao-dessert-2.jpg',
+    'images/stores/mandao-dessert-3.jpg',
+    'images/stores/mandao-dessert-4.jpg',
+  ],
   address: '朝阳区团结湖东街5号',
   mock_x: 80, mock_y: 30
 }];
