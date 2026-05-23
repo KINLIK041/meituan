@@ -7,7 +7,10 @@
 ### 完整流程演示
 
 <p align="center">
-  <video src="./screenshots/demo-full.mp4" controls width="360" />
+  <a href="./screenshots/demo-full.mp4">
+    <img src="./screenshots/home.png" alt="完整演示视频" width="360" />
+  </a>
+  <br/><sub>⬆ 点击播放完整演示 (MP4)</sub>
 </p>
 
 ### 交互演示 (GIF)
