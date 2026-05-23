@@ -223,30 +223,54 @@ function App() {
       defaulted: false, conflictPriority: null, activeChip: null,
     }));
 
-    // ── Run analysis asynchronously (API first, fallback to heuristic) ──
-    var apiResult = await window.analyzeIntent(trimmed, sid, city);
-    var analysis = apiResult ? mapApiToNL(apiResult, trimmed) : window.analyzeNL(trimmed);
+    // ── Unified smart-plan call (single HTTP round-trip) ──
+    var smartResult = await window.smartPlan(trimmed, sid, city);
 
-    if (analysis.branch === 'complete' || analysis.branch === 'assumption') {
-      window.planWithFallback(trimmed, analysis.scene, {}, city).then((result) => {
-        setChatState((s2) => ({
-          ...s2, stage: 'route', scene: analysis.scene, nl: analysis,
-          routes: result.routes, sessionId: result.sessionId || sid,
-        }));
-      });
-      // Keep generating state until planWithFallback resolves
-    } else if (analysis.branch === 'followup') {
-      setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: analysis.scene, nl: analysis }));
-    } else if (analysis.branch === 'conflict') {
-      setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: analysis.scene, nl: analysis }));
+    if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
+      // Routes returned directly — no second API call needed
+      var analysis = mapApiToNL(smartResult, trimmed);
+      setChatState((s2) => ({
+        ...s2, stage: 'route', scene: analysis.scene, nl: analysis,
+        routes: smartResult._routes, sessionId: smartResult.sessionId || sid,
+      }));
+    } else if (smartResult) {
+      // followup or conflict: no routes yet
+      var analysis2 = mapApiToNL(smartResult, trimmed);
+      if (analysis2.branch === 'followup') {
+        setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: analysis2.scene, nl: analysis2 }));
+      } else if (analysis2.branch === 'conflict') {
+        setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: analysis2.scene, nl: analysis2 }));
+      } else {
+        // Unexpected stage — fall back to plan with the parsed intent
+        window.planWithFallback(trimmed, analysis2.scene, {}, city, smartResult.intent).then((result) => {
+          setChatState((s2) => ({
+            ...s2, stage: 'route', scene: analysis2.scene, nl: analysis2,
+            routes: result.routes, sessionId: result.sessionId || sid,
+          }));
+        });
+      }
     } else {
-      // Fallback: treat as complete
-      window.planWithFallback(trimmed, analysis.scene, {}, city).then((result) => {
-        setChatState((s2) => ({
-          ...s2, stage: 'route', scene: analysis.scene, nl: analysis,
-          routes: result.routes, sessionId: result.sessionId || sid,
-        }));
-      });
+      // API unavailable — fall back to heuristic analyze + plan (two-step)
+      var hAnalysis = window.analyzeNL(trimmed);
+      if (hAnalysis.branch === 'complete' || hAnalysis.branch === 'assumption') {
+        window.planWithFallback(trimmed, hAnalysis.scene, {}, city).then((result) => {
+          setChatState((s2) => ({
+            ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
+            routes: result.routes, sessionId: result.sessionId || sid,
+          }));
+        });
+      } else if (hAnalysis.branch === 'followup') {
+        setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: hAnalysis.scene, nl: hAnalysis }));
+      } else if (hAnalysis.branch === 'conflict') {
+        setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: hAnalysis.scene, nl: hAnalysis }));
+      } else {
+        window.planWithFallback(trimmed, hAnalysis.scene, {}, city).then((result) => {
+          setChatState((s2) => ({
+            ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
+            routes: result.routes, sessionId: result.sessionId || sid,
+          }));
+        });
+      }
     }
   };
 

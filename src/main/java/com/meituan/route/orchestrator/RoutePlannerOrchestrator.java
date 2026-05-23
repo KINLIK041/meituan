@@ -52,23 +52,37 @@ public class RoutePlannerOrchestrator {
 
     /**
      * Full pipeline: plan a route from natural language query.
-     * Runs LLM intent parsing and speculative POI discovery in parallel
-     * to cut total latency nearly in half (max(LLM, API) vs LLM+API).
+     * Runs LLM intent parsing and speculative POI discovery in parallel.
      */
     public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity) {
-        log.info("Orchestrator: starting route plan for '{}', city={}", query, requestCity);
+        return planRoute(query, sessionId, requestCity, null);
+    }
+
+    /**
+     * Full pipeline with optional pre-parsed intent (from prior analyze call).
+     * When preParsedIntent is provided, the LLM parse step is skipped entirely,
+     * cutting ~3-5 seconds from total latency.
+     */
+    public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity, UserIntent preParsedIntent) {
+        log.info("Orchestrator: starting route plan for '{}', city={}, preParsedIntent={}", query, requestCity, preParsedIntent != null);
 
         var effectiveCity = (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
 
-        // Run LLM intent parsing and speculative POI discovery in TRUE parallel via Mono.zip.
-        // Previously these were "parallel" in name only — Reactor Mono is lazy,
-        // so the discovery Mono wasn't subscribed until after the LLM completed.
         var broadIntent = DiscoveryAgent.broadIntent(effectiveCity);
         var speculativeDiscovery = discoveryAgent.discover(broadIntent)
                 .subscribeOn(Schedulers.boundedElastic());
 
-        var llmMono = Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
-                .subscribeOn(Schedulers.boundedElastic());
+        // If intent was already parsed by /api/route/analyze, reuse it — skip duplicate LLM call
+        var llmMono = preParsedIntent != null
+                ? Mono.fromCallable(() -> {
+                    var sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : sessionManager.createSession();
+                    var intent = (requestCity != null && !requestCity.isBlank())
+                            ? preParsedIntent.withCity(requestCity) : preParsedIntent;
+                    log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
+                    return new ConversationAgent.ConversationResult(sid, intent, null, null);
+                })
+                : Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
+                        .subscribeOn(Schedulers.boundedElastic());
 
         return Mono.zip(llmMono, speculativeDiscovery)
                 .flatMap(tuple -> {
@@ -100,25 +114,34 @@ public class RoutePlannerOrchestrator {
                                     null, ""));
                         }
 
-                        var constraints = constraintEngine.buildConstraints(intent, effectiveDiscovery.candidates());
-                        var constraintReport = constraintAgent.analyze(planResult.routes(), constraints, intent);
-
                         for (var route : planResult.routes()) {
                             sessionManager.addSnapshot(actualSessionId, route, intent);
                         }
 
-                        var explanation = explanationAgent.explain(planResult.routes(), intent);
+                        // Constraint analysis and explanation are independent — run in parallel
+                        var constraintMono = Mono.fromCallable(() -> {
+                            var constraints = constraintEngine.buildConstraints(intent, effectiveDiscovery.candidates());
+                            return constraintAgent.analyze(planResult.routes(), constraints, intent);
+                        }).subscribeOn(Schedulers.boundedElastic());
 
-                        var routes = planResult.routes();
-                        var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
+                        var explanationMono = Mono.fromCallable(() ->
+                            explanationAgent.explain(planResult.routes(), intent)
+                        ).subscribeOn(Schedulers.boundedElastic());
 
-                        return Mono.just(new PlanResponse(
-                                actualSessionId,
-                                routes,
-                                warning,
-                                constraintReport.bestRoute(),
-                                explanation.comparisonHtml()
-                        ));
+                        return Mono.zip(constraintMono, explanationMono).map(postResult -> {
+                            var constraintReport = postResult.getT1();
+                            var explanation = postResult.getT2();
+                            var routes = planResult.routes();
+                            var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
+
+                            return new PlanResponse(
+                                    actualSessionId,
+                                    routes,
+                                    warning,
+                                    constraintReport.bestRoute(),
+                                    explanation.comparisonHtml()
+                            );
+                        });
                     });
                 })
                 .timeout(Duration.ofSeconds(15));

@@ -91,15 +91,11 @@
 │    │          │  (图搜索生成路线)    │              │          │
 │    │          └──────────┬──────────┘              │          │
 │    │                     │                         │          │
-│    │          ┌──────────┴──────────┐              │          │
-│    │          │  Constraint Agent   │              │          │
-│    │          │  (约束验证+打分)     │              │          │
-│    │          └──────────┬──────────┘              │          │
-│    │                     │                         │          │
-│    │          ┌──────────┴──────────┐              │          │
-│    │          │  Explanation Agent  │              │          │
-│    │          │  (模板引擎, <50ms)   │              │          │
-│    │          └─────────────────────┘              │          │
+│    │    ┌────────────────┴────────────────┐        │          │
+│    │    │  Constraint Agent │ Explanation │        │          │
+│    │    │  (约束验证+打分)   │ Agent(模板)  │        │          │
+│    │    └────────────────┬────────────────┘        │          │
+│    │          Mono.zip 真并行 (<100ms)              │          │
 │    └──────────────────────────────────────────────┘          │
 │                                                              │
 │  Infrastructure                                               │
@@ -110,7 +106,9 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 延迟优化：真并行执行
+### 延迟优化
+
+#### v1 → v2：真并行执行
 
 **v1 问题：** 编排器代码注释写"并行执行"，但 Reactor 的 Mono 是惰性求值——Discovery Mono 在 LLM 完成后才被订阅，实际是**串行**的（5s LLM + 3s API = 8s+）。
 
@@ -123,16 +121,36 @@
                 ←── max(LLM, API) ──→
 ```
 
-**耗时分布（修复后）：**
+#### v2 → v3：消除重复调用 + 合并 HTTP 往返
+
+**问题 1 — 重复 LLM 调用：** 前端先调 `POST /api/route/analyze`（LLM 解析意图 ~5s），拿到结果后再调 `POST /api/route/plan`（内部再调一次 LLM 解析同一句话）。同一句话被 LLM 解析了**两次**。
+
+**修复：** `planRoute()` 新增 4 参重载 `planRoute(query, sessionId, city, preParsedIntent)`。`/analyze` 返回的 `UserIntent` 传给 `/plan`，后端跳过第二次 LLM 调用 → 省 ~5s。
+
+**问题 2 — 两次 HTTP 往返：** analyze → plan 需要两次网络往返 + 两次 JSON 序列化/反序列化。
+
+**修复：** 新增 `POST /api/route/smart-plan` 统一端点，analyze + plan 在一次请求内链式完成。
+
+**问题 3 — 步骤 4 串行：** ConstraintAgent + ExplanationAgent 原本串行执行（虽然各自很快，但加起来也有 ~150ms）。
+
+**修复：** 使用 `Mono.zip(constraintMono, explanationMono)` 让约束验证和方案解释并行执行。
+
+```
+v2 (修复后):  analyze ──HTTP── LLM ██████░░ ──HTTP── plan ──HTTP── 规划 ██░░ 约束 ░ 解释 ░  ≈ 15-20s
+
+v3 (smart-plan):  smart-plan ──HTTP── LLM ██████░░ 规划 ██░░ ┌ 约束 ░┐  单次响应  ≈ 8-10s
+                                                           └ 解释 ░┘  Mono.zip
+```
+
+**耗时分布（v3）：**
 
 | 步骤 | Agent | 耗时 | 备注 |
 |------|-------|------|------|
 | 意图解析 | ConversationAgent | 2-5s | DeepSeek API，与 Discovery 并行 |
 | POI 发现 | DiscoveryAgent | 1-3s | Mock 瞬时，Dianping API 3s，与 LLM 并行 |
 | 路线生成 | PlanningAgent | 0.5-2s | JGraphT Beam Search |
-| 约束验证 | ConstraintAgent | <100ms | 硬约束剪枝 + 软约束加权 |
-| 方案解释 | ExplanationAgent | <50ms | **模板引擎**，非 LLM 调用 |
-| **总计** | | **约 4-7s** | max(LLM, Discovery) + 后续 |
+| 约束验证 + 方案解释 | ConstraintAgent + ExplanationAgent | <100ms | **Mono.zip 并行**，模板引擎非 LLM |
+| **总计** | | **约 3-10s** | max(LLM, Discovery) + Planning + max(Constraint, Explanation) |
 
 ExplanationAgent 使用 `RecommendationExplainer`（`src/.../llm/RecommendationExplainer.java`），是基于 `TAG_PRAISE` 标签映射表的**纯模板引擎**，不产生额外 LLM Token 消耗。
 
@@ -326,7 +344,7 @@ meituan/
 │   │   └── ExplanationAgent.java          # Agent 5: 模板引擎解释
 │   │
 │   ├── orchestrator/
-│   │   └── RoutePlannerOrchestrator.java  # ★ 多 Agent 编排器 (Mono.zip 真并行)
+│   │   └── RoutePlannerOrchestrator.java  # ★ 多 Agent 编排器 (Step1+Step4 Mono.zip 真并行)
 │   │
 │   ├── llm/
 │   │   ├── IntentParser.java              # LLM 意图解析 + 完整性分析
@@ -445,11 +463,50 @@ python -m http.server 3000
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | `/api/route/smart-plan` | **统一端点**：意图分析 + 路线规划（单次 HTTP） |
 | POST | `/api/route/plan` | 首次路线规划 |
 | POST | `/api/route/analyze` | LLM 意图分析 + 需求补全判断 |
 | POST | `/api/route/adjust` | 增量调整路线 |
 | GET | `/api/route/compare/{sessionId}` | 多方案对比 |
 | GET | `/api/route/health` | 健康检查 |
+**smart-plan 请求示例**（推荐，单次调用）:
+
+```json
+{
+  "query": "周末下午去三里屯逛街，然后吃日料",
+  "sessionId": null,
+  "city": "北京"
+}
+```
+
+完整响应（complete/assumption 阶段）：
+```json
+{
+  "stage": "complete",
+  "summaryText": "周末三里屯逛街+日料，人均约 ¥200",
+  "intent": { "city": "北京", "district": "三里屯", "preferredCategories": ["SHOPPING", "JAPANESE"], "budget": 200 },
+  "routes": [ ... ],
+  "warning": null,
+  "recommendedRoute": { ... },
+  "explanation": "<div>...</div>",
+  "sessionId": "sess_abc123"
+}
+```
+
+追问响应（followup 阶段，routes 为 null）：
+```json
+{
+  "stage": "followup",
+  "summaryText": "综合",
+  "intent": { "city": "北京" },
+  "followupQuestions": [
+    { "id": "scene", "label": "你更想规划哪类路线？", "options": ["朋友聚会", "情侣约会", "一个人放松", "亲子遛娃"] }
+  ],
+  "conflicts": null,
+  "missingFields": ["categories", "district", "budget"],
+  "routes": null
+}
+```
 
 **plan 请求示例**:
 
@@ -488,6 +545,11 @@ python -m http.server 3000
 ### 演示场景
 
 ```bash
+# 推荐：smart-plan 统一端点（单次 HTTP 调用）
+curl -X POST http://localhost:8080/api/route/smart-plan \
+  -H "Content-Type: application/json" \
+  -d '{"query": "周末下午去三里屯逛街，然后吃日料", "sessionId": null, "city": "北京"}'
+
 # 场景一：完整 NL 输入
 curl -X POST http://localhost:8080/api/route/plan \
   -H "Content-Type: application/json" \

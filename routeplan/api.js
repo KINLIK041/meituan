@@ -94,13 +94,60 @@ function mapPlanResponse(data) {
 // ─── API calls ────────────────────────────────────────────────────
 
 /**
+ * POST /api/route/smart-plan — Unified analyze + plan in one call.
+ * Eliminates the extra HTTP round-trip between analyze and plan.
+ * Returns { stage, summaryText, intent, routes (mapped), followupQuestions, conflicts, ... }
+ * or null when the backend is unreachable.
+ */
+async function smartPlan(query, sessionId, city) {
+  try {
+    const body = { query: query, sessionId: sessionId || null, city: city || null };
+    const res = await fetch(API_BASE + '/api/route/smart-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.sessionId) setSessionId(data.sessionId);
+
+    // Map routes if present (complete/assumption stage)
+    if (data.routes && data.routes.length > 0) {
+      data._routes = data.routes.map(mapRoute);
+      var tones = ['orange', 'pink', 'green'];
+      data._routes.forEach(function(r, i) {
+        r.tone = tones[i] || 'green';
+        r.positioning = i === 0 ? '综合最优' : i === 1 ? '体验更强' : '更稳妥';
+      });
+    }
+
+    // Normalize followupQuestions to frontend format
+    if (data.followupQuestions && data.followupQuestions.length > 0) {
+      data._questions = data.followupQuestions.map(function(q) {
+        return { id: q.id, label: q.label, options: q.options || [] };
+      });
+    }
+    // Normalize conflicts to frontend format
+    if (data.conflicts && data.conflicts.length > 0) {
+      data._conflicts = data.conflicts.map(function(c) {
+        return { id: c.id, label: c.label, hint: c.hint || '' };
+      });
+    }
+    return data;
+  } catch (e) {
+    console.warn('Smart-plan API unavailable:', e.message);
+    return null;
+  }
+}
+
+/**
  * POST /api/route/plan
  * @param {string} query - Natural language query
  * @param {string|null} sessionId
  * @returns {Promise<{sessionId, routes, warning, recommendedRoute}>}
  */
-async function planRoute(query, sessionId, city) {
-  const body = { query: query, sessionId: sessionId || null, city: city || null };
+async function planRoute(query, sessionId, city, intent) {
+  const body = { query: query, sessionId: sessionId || null, city: city || null, intent: intent || null };
   const res = await fetch(API_BASE + '/api/route/plan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -216,9 +263,9 @@ function buildQueryFromScene(scene, answers) {
  * Call planRoute with automatic fallback to mock ROUTE_OPTIONS data.
  * Used by both NL and scene-tap paths.
  */
-async function planWithFallback(query, scene, answers, city) {
+async function planWithFallback(query, scene, answers, city, intent) {
   try {
-    const result = await planRoute(query, null, city);
+    const result = await planRoute(query, null, city, intent || null);
     if (result.routes.length > 0) return result;
   } catch (e) {
     console.warn('Backend API unavailable, using mock data:', e.message);
@@ -427,7 +474,7 @@ async function deleteFavorite(id) {
 Object.assign(window, {
   API_BASE,
   getSessionId, setSessionId,
-  planRoute, adjustRoute, analyzeIntent,
+  planRoute, adjustRoute, analyzeIntent, smartPlan,
   buildQueryFromScene,
   planWithFallback, adjustWithFallback, mockAdjustRoutes,
   mapRoute, mapPlanResponse,
