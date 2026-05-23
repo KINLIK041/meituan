@@ -13,21 +13,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Manages session state for multi-turn conversation.
- * Uses in-memory ConcurrentHashMap with optional DB persistence.
+ * Uses in-memory ConcurrentHashMap with DB persistence as recovery source.
+ * Stale sessions (inactive > 30 min) are evicted from memory to prevent leaks.
  */
 @Component
 public class SessionStateManager {
 
     private static final Logger log = LoggerFactory.getLogger(SessionStateManager.class);
+    private static final Duration SESSION_TTL = Duration.ofMinutes(30);
 
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
+    private final AtomicLong lastCleanup = new AtomicLong(0);
 
     private final SessionRepository sessionRepository;
     private final SnapshotRepository snapshotRepository;
@@ -54,6 +59,7 @@ public class SessionStateManager {
     }
 
     public Optional<Session> getSession(String sessionId) {
+        evictStale();
         var session = sessions.get(sessionId);
         if (session != null) return Optional.of(session);
 
@@ -150,6 +156,26 @@ public class SessionStateManager {
         }
 
         return 0;
+    }
+
+    /** Evict stale sessions (inactive > TTL) from memory. Runs at most every 5 min. */
+    private void evictStale() {
+        var now = System.currentTimeMillis();
+        var last = lastCleanup.get();
+        if (now - last < Duration.ofMinutes(5).toMillis()) return;
+        if (!lastCleanup.compareAndSet(last, now)) return;
+
+        var cutoff = Instant.now().minus(SESSION_TTL);
+        var it = sessions.entrySet().iterator();
+        int removed = 0;
+        while (it.hasNext()) {
+            var entry = it.next();
+            if (entry.getValue().updatedAt().isBefore(cutoff)) {
+                it.remove();
+                removed++;
+            }
+        }
+        if (removed > 0) log.info("Evicted {} stale sessions", removed);
     }
 
     private List<Snapshot> loadSnapshots(String sessionId) {

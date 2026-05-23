@@ -3,7 +3,27 @@
 // Transforms backend Route/POI models into the frontend's route-option card format.
 // Falls back to mock data (ROUTE_OPTIONS) when the backend is unreachable.
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = (function() {
+  var host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '') {
+    return 'http://localhost:8080';
+  }
+  // Production: assume backend on same origin
+  var proto = window.location.protocol;
+  var port = window.location.port;
+  return proto + '//' + host + (port ? ':' + port : '');
+})();
+
+// ─── Fetch with timeout ───────────────────────────────────────────
+
+/** Wraps fetch with an AbortController timeout (default 15s). */
+function fetchWithTimeout(url, options, timeoutMs) {
+  var controller = new AbortController();
+  var ms = timeoutMs || 15000;
+  var timer = setTimeout(function() { controller.abort(); }, ms);
+  return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+    .finally(function() { clearTimeout(timer); });
+}
 
 // ─── Session tracking ─────────────────────────────────────────────
 let _sessionId = null;
@@ -102,7 +122,7 @@ function mapPlanResponse(data) {
 async function smartPlan(query, sessionId, city) {
   try {
     const body = { query: query, sessionId: sessionId || null, city: city || null };
-    const res = await fetch(API_BASE + '/api/route/smart-plan', {
+    const res = await fetchWithTimeout(API_BASE + '/api/route/smart-plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -148,7 +168,7 @@ async function smartPlan(query, sessionId, city) {
  */
 async function planRoute(query, sessionId, city, intent) {
   const body = { query: query, sessionId: sessionId || null, city: city || null, intent: intent || null };
-  const res = await fetch(API_BASE + '/api/route/plan', {
+  const res = await fetchWithTimeout(API_BASE + '/api/route/plan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -168,7 +188,7 @@ async function planRoute(query, sessionId, city, intent) {
  */
 async function adjustRoute(sessionId, adjustment, city) {
   const body = { sessionId: sessionId, adjustment: adjustment, city: city || null };
-  const res = await fetch(API_BASE + '/api/route/adjust', {
+  const res = await fetchWithTimeout(API_BASE + '/api/route/adjust', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -186,7 +206,7 @@ async function adjustRoute(sessionId, adjustment, city) {
 async function analyzeIntent(query, sessionId, city) {
   try {
     const body = { query: query, sessionId: sessionId || null, city: city || null };
-    const res = await fetch(API_BASE + '/api/route/analyze', {
+    const res = await fetchWithTimeout(API_BASE + '/api/route/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -413,7 +433,7 @@ async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, to
     createdAt: new Date().toISOString(),
   };
   try {
-    var res = await fetch(API_BASE + '/api/favorites', {
+    var res = await fetchWithTimeout(API_BASE + '/api/favorites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -438,7 +458,7 @@ async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, to
 
 async function getFavorites() {
   try {
-    var res = await fetch(API_BASE + '/api/favorites');
+    var res = await fetchWithTimeout(API_BASE + '/api/favorites');
     if (!res.ok) throw new Error('Fetch failed: ' + res.status);
     var serverData = await res.json();
     // Merge: server data + any local-only entries not yet synced
@@ -461,7 +481,7 @@ async function deleteFavorite(id) {
     if (String(id).indexOf('local-') === 0) {
       return { success: true, id: id };
     }
-    var res = await fetch(API_BASE + '/api/favorites/' + id, { method: 'DELETE' });
+    var res = await fetchWithTimeout(API_BASE + '/api/favorites/' + id, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed: ' + res.status);
     return await res.json();
   } catch (e) {
