@@ -50,10 +50,13 @@ public class IntentParser {
             Map.entry("三里屯", "三里屯"), Map.entry("国贸", "国贸"),
             Map.entry("王府井", "王府井"), Map.entry("前门", "前门"),
             Map.entry("东城", "东城"), Map.entry("西城", "西城"),
-            Map.entry("海淀", "海淀"),
+            Map.entry("海淀", "海淀"), Map.entry("朝阳", "朝阳"),
             Map.entry("外滩", "外滩"), Map.entry("陆家嘴", "陆家嘴"),
             Map.entry("新天地", "新天地"), Map.entry("南京路", "南京路"),
-            Map.entry("静安寺", "静安寺"), Map.entry("浦东", "浦东")
+            Map.entry("静安寺", "静安寺"), Map.entry("浦东", "浦东"),
+            Map.entry("武康路", "武康路"), Map.entry("徐汇", "徐汇"),
+            Map.entry("田子坊", "田子坊"), Map.entry("豫园", "豫园"),
+            Map.entry("虹桥", "虹桥"), Map.entry("人民广场", "人民广场")
     );
 
     public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env) {
@@ -74,10 +77,13 @@ public class IntentParser {
         // Tier 1: Try LLM-based parsing
         if (llmAvailable) {
             try {
+                log.info(">>> Using LLM to parse query: {}", query.substring(0, Math.min(60, query.length())));
                 return parseWithLLM(query, sessionId);
             } catch (Exception e) {
                 log.warn("LLM intent parsing failed, falling back to rules: {}", e.getMessage());
             }
+        } else {
+            log.info(">>> LLM unavailable, using rule-based parsing for: {}", query.substring(0, Math.min(60, query.length())));
         }
 
         // Tier 2: Rule-based fallback
@@ -304,7 +310,10 @@ public class IntentParser {
 
     private String detectCity(String query) {
         if (query.contains("上海") || query.contains("外滩") || query.contains("陆家嘴")
-                || query.contains("新天地") || query.contains("浦东")) return "上海";
+                || query.contains("新天地") || query.contains("浦东")
+                || query.contains("武康路") || query.contains("静安寺") || query.contains("南京路")
+                || query.contains("徐汇") || query.contains("田子坊") || query.contains("豫园")
+                || query.contains("虹桥")) return "上海";
         return "北京"; // default
     }
 
