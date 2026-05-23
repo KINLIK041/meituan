@@ -99,8 +99,8 @@ function mapPlanResponse(data) {
  * @param {string|null} sessionId
  * @returns {Promise<{sessionId, routes, warning, recommendedRoute}>}
  */
-async function planRoute(query, sessionId) {
-  const body = { query: query, sessionId: sessionId || null };
+async function planRoute(query, sessionId, city) {
+  const body = { query: query, sessionId: sessionId || null, city: city || null };
   const res = await fetch(API_BASE + '/api/route/plan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -116,10 +116,11 @@ async function planRoute(query, sessionId) {
  * POST /api/route/adjust
  * @param {string} sessionId
  * @param {string} adjustment - e.g. "更便宜", "少走路"
+ * @param {string} city - current selected city
  * @returns {Promise<{sessionId, routes, warning, recommendedRoute}>}
  */
-async function adjustRoute(sessionId, adjustment) {
-  const body = { sessionId: sessionId, adjustment: adjustment };
+async function adjustRoute(sessionId, adjustment, city) {
+  const body = { sessionId: sessionId, adjustment: adjustment, city: city || null };
   const res = await fetch(API_BASE + '/api/route/adjust', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -128,6 +129,40 @@ async function adjustRoute(sessionId, adjustment) {
   if (!res.ok) throw new Error('API error: ' + res.status);
   const data = await res.json();
   return mapPlanResponse(data);
+}
+
+/**
+ * POST /api/route/analyze — LLM-based intent analysis with completeness check.
+ * Returns { stage, intent, missingFields, followupQuestions, conflicts, summaryText }
+ * or null when the backend is unreachable (caller should fall back to analyzeNL).
+ */
+async function analyzeIntent(query, sessionId, city) {
+  try {
+    const body = { query: query, sessionId: sessionId || null, city: city || null };
+    const res = await fetch(API_BASE + '/api/route/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Normalize followupQuestions to frontend format
+    if (data.followupQuestions && data.followupQuestions.length > 0) {
+      data._questions = data.followupQuestions.map(function(q) {
+        return { id: q.id, label: q.label, options: q.options || [] };
+      });
+    }
+    // Normalize conflicts to frontend format
+    if (data.conflicts && data.conflicts.length > 0) {
+      data._conflicts = data.conflicts.map(function(c) {
+        return { id: c.id, label: c.label, hint: c.hint || '' };
+      });
+    }
+    return data;
+  } catch (e) {
+    console.warn('Intent analysis API unavailable:', e.message);
+    return null;
+  }
 }
 
 // ─── Query builder for scene + answers path ───────────────────────
@@ -181,9 +216,9 @@ function buildQueryFromScene(scene, answers) {
  * Call planRoute with automatic fallback to mock ROUTE_OPTIONS data.
  * Used by both NL and scene-tap paths.
  */
-async function planWithFallback(query, scene, answers) {
+async function planWithFallback(query, scene, answers, city) {
   try {
-    const result = await planRoute(query);
+    const result = await planRoute(query, null, city);
     if (result.routes.length > 0) return result;
   } catch (e) {
     console.warn('Backend API unavailable, using mock data:', e.message);
@@ -206,9 +241,9 @@ async function planWithFallback(query, scene, answers) {
  * When backend is unavailable, reorder/filter mock routes based on chip label
  * so the user sees a visible change instead of the same results.
  */
-async function adjustWithFallback(sessionId, adjustment, currentRoutes) {
+async function adjustWithFallback(sessionId, adjustment, currentRoutes, city) {
   try {
-    const result = await adjustRoute(sessionId, adjustment);
+    const result = await adjustRoute(sessionId, adjustment, city);
     if (result.routes.length > 0) return result;
   } catch (e) {
     console.warn('Backend API unavailable for adjust, using mock:', e.message);
@@ -392,7 +427,7 @@ async function deleteFavorite(id) {
 Object.assign(window, {
   API_BASE,
   getSessionId, setSessionId,
-  planRoute, adjustRoute,
+  planRoute, adjustRoute, analyzeIntent,
   buildQueryFromScene,
   planWithFallback, adjustWithFallback, mockAdjustRoutes,
   mapRoute, mapPlanResponse,

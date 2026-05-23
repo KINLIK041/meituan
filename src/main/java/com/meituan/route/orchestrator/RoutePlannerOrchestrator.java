@@ -55,35 +55,43 @@ public class RoutePlannerOrchestrator {
      * Runs LLM intent parsing and speculative POI discovery in parallel
      * to cut total latency nearly in half (max(LLM, API) vs LLM+API).
      */
-    public Mono<PlanResponse> planRoute(String query, String sessionId) {
-        log.info("Orchestrator: starting route plan for '{}'", query);
+    public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity) {
+        log.info("Orchestrator: starting route plan for '{}', city={}", query, requestCity);
 
-        // Start speculative discovery immediately (broad Beijing search)
-        // while the LLM parses intent in parallel.
-        var broadIntent = DiscoveryAgent.broadIntent("北京");
+        var effectiveCity = (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
+
+        // Run LLM intent parsing and speculative POI discovery in TRUE parallel via Mono.zip.
+        // Previously these were "parallel" in name only — Reactor Mono is lazy,
+        // so the discovery Mono wasn't subscribed until after the LLM completed.
+        var broadIntent = DiscoveryAgent.broadIntent(effectiveCity);
         var speculativeDiscovery = discoveryAgent.discover(broadIntent)
                 .subscribeOn(Schedulers.boundedElastic());
 
-        // LLM intent parsing runs on its own scheduler
-        return Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(convResult -> {
-                    var intent = convResult.intent();
+        var llmMono = Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
+                .subscribeOn(Schedulers.boundedElastic());
+
+        return Mono.zip(llmMono, speculativeDiscovery)
+                .flatMap(tuple -> {
+                    var convResult = tuple.getT1();
+                    var speculative = tuple.getT2();
                     var actualSessionId = convResult.sessionId();
 
-                    // Use speculative results for Beijing, re-discover for other cities
+                    var rawIntent = convResult.intent();
+                    var intent = (requestCity != null && !requestCity.isBlank())
+                            ? rawIntent.withCity(requestCity)
+                            : rawIntent;
                     var city = intent.city() != null ? intent.city() : "北京";
-                    var discoveryMono = "北京".equals(city)
-                            ? speculativeDiscovery
+
+                    // If speculative city matches intent city, reuse; otherwise re-discover
+                    var discoveryMono = effectiveCity.equals(city)
+                            ? Mono.just(speculative)
                             : discoveryAgent.discover(intent).subscribeOn(Schedulers.boundedElastic());
 
                     return discoveryMono.flatMap(discovery -> {
-                        // If speculative, filter for the actual intent categories
-                        var effectiveDiscovery = "北京".equals(city) && hasSpecificCategories(intent)
+                        var effectiveDiscovery = effectiveCity.equals(city) && hasSpecificCategories(intent)
                                 ? discoveryAgent.filterForIntent(discovery, intent)
                                 : discovery;
 
-                        // Step 3: PlanningAgent — generate routes
                         var planResult = planningAgent.plan(effectiveDiscovery, intent, null);
 
                         if (!planResult.hasRoutes()) {
@@ -92,19 +100,15 @@ public class RoutePlannerOrchestrator {
                                     null, ""));
                         }
 
-                        // Step 4: ConstraintAgent — validate and score
                         var constraints = constraintEngine.buildConstraints(intent, effectiveDiscovery.candidates());
                         var constraintReport = constraintAgent.analyze(planResult.routes(), constraints, intent);
 
-                        // Store route snapshots
                         for (var route : planResult.routes()) {
                             sessionManager.addSnapshot(actualSessionId, route, intent);
                         }
 
-                        // Step 5: ExplanationAgent — generate explanations
                         var explanation = explanationAgent.explain(planResult.routes(), intent);
 
-                        // Build response
                         var routes = planResult.routes();
                         var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
 
@@ -128,9 +132,9 @@ public class RoutePlannerOrchestrator {
     /**
      * Adjustment pipeline: modify an existing route based on natural language feedback.
      */
-    public Mono<PlanResponse> adjustRoute(String sessionId, String adjustment) {
+    public Mono<PlanResponse> adjustRoute(String sessionId, String adjustment, String requestCity) {
         return Mono.fromCallable(() -> {
-            log.info("Orchestrator: adjusting route for session {}: '{}'", sessionId, adjustment);
+            log.info("Orchestrator: adjusting route for session {}: '{}', city={}", sessionId, adjustment, requestCity);
 
             var sessionOpt = sessionManager.getSession(sessionId);
             if (sessionOpt.isEmpty()) {
@@ -141,7 +145,7 @@ public class RoutePlannerOrchestrator {
             var session = sessionOpt.get();
             var currentRoute = sessionManager.getLatestRoute(sessionId).orElse(null);
             if (currentRoute == null) {
-                return planRoute(adjustment, sessionId);
+                return planRoute(adjustment, sessionId, requestCity);
             }
 
             // Parse the adjustment constraints
@@ -155,7 +159,9 @@ public class RoutePlannerOrchestrator {
 
             // Process adjustment through conversation agent
             var convResult = conversationAgent.process(adjustment, sessionId);
-            var newIntent = convResult.intent();
+            var newIntent = (requestCity != null && !requestCity.isBlank())
+                    ? convResult.intent().withCity(requestCity)
+                    : convResult.intent();
 
             // Re-discover with new intent
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {

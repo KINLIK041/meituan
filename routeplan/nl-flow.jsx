@@ -185,6 +185,14 @@ function FollowupCard({ rawText, questions, answers, onAnswer }) {
   const q = questions[qIdx];
   const total = questions.length;
 
+  // Custom-input state for "自定义" / "输入地点" options
+  const [customMode, setCustomMode] = React.useState(false);
+  const [customText, setCustomText] = React.useState('');
+  React.useEffect(() => { setCustomMode(false); setCustomText(''); }, [qIdx]);
+
+  const isCustomOption = (opt) =>
+    opt === '自定义' || opt === '输入地点' || opt === '看心情' || opt === '不设上限' || opt === '不限';
+
   return (
     <AssistantMsg label="路线助手 · 还差一点">
       <div style={{
@@ -231,19 +239,72 @@ function FollowupCard({ rawText, questions, answers, onAnswer }) {
           <div style={{ fontSize: 14.5, fontWeight: 600, color: '#1a1a1a', marginBottom: 10, lineHeight: 1.4 }}>
             {q.label}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-            {q.options.map((opt) => (
-              <button key={opt} onClick={() => onAnswer(q.id, opt)} style={{
-                padding: '11px 12px', borderRadius: 10,
-                background: '#fff', border: '1px solid #E5E5E7',
-                fontSize: 13, fontWeight: 500, color: '#1a1a1a',
-                cursor: 'pointer', fontFamily: 'inherit',
-                textAlign: 'center', transition: 'all 0.15s',
-              }}>
-                {opt}
-              </button>
-            ))}
-          </div>
+          {!customMode && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {q.options.map((opt) => (
+                <button key={opt} onClick={() => {
+                  if (isCustomOption(opt) && (opt === '自定义' || opt === '输入地点')) {
+                    setCustomMode(true);
+                  } else {
+                    onAnswer(q.id, opt);
+                  }
+                }} style={{
+                  padding: '11px 12px', borderRadius: 10,
+                  background: '#fff', border: '1px solid #E5E5E7',
+                  fontSize: 13, fontWeight: 500, color: '#1a1a1a',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  textAlign: 'center', transition: 'all 0.15s',
+                }}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {customMode && (
+            <div style={{
+              display: 'flex', gap: 8, alignItems: 'center',
+            }}>
+              <input
+                autoFocus
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customText.trim()) {
+                    onAnswer(q.id, customText.trim());
+                  }
+                }}
+                placeholder={
+                  q.id === 'place'  ? '比如：三里屯 / 国贸 / 朝阳大悦城' :
+                  q.id === 'time'   ? '比如：明天上午 10 点' :
+                  q.id === 'budget' ? '比如：¥120 以内' : '输入自定义内容…'
+                }
+                style={{
+                  flex: 1, padding: '10px 12px', fontSize: 13.5,
+                  border: '1px solid #E5E5E7', borderRadius: 10,
+                  outline: 'none', fontFamily: 'inherit', background: '#fff',
+                  color: '#1a1a1a',
+                }}
+              />
+              <button
+                onClick={() => { if (customText.trim()) onAnswer(q.id, customText.trim()); }}
+                disabled={!customText.trim()}
+                style={{
+                  padding: '10px 14px', fontSize: 13, fontWeight: 600,
+                  background: customText.trim() ? '#E94A1A' : '#E5E5E7',
+                  color: '#fff', border: 'none', borderRadius: 10,
+                  cursor: customText.trim() ? 'pointer' : 'default',
+                }}
+              >确定</button>
+              <button
+                onClick={() => { setCustomMode(false); setCustomText(''); }}
+                style={{
+                  padding: '10px 4px', fontSize: 12, color: '#8e8e93',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                }}
+              >取消</button>
+            </div>
+          )}
         </div>
       </div>
     </AssistantMsg>

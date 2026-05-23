@@ -106,30 +106,86 @@ function App() {
   // Expose for cross-component use (FavoritesPanel, RouteOption, etc.)
   window.showToast = showToast;
 
+  // ─── Map backend IntentAnalysisResult → frontend nl format ──
+  const mapApiToNL = (result, rawText) => {
+    var scene = detectSceneFromIntent(result.intent);
+    var extracted = {
+      time: result.intent && result.intent.startTime ? result.intent.startTime : null,
+      place: result.intent && result.intent.district || null,
+      budget: result.intent && result.intent.budget > 0 ? '¥' + Math.round(result.intent.budget) : null,
+      mood: result.intent && result.intent.keywords ? result.intent.keywords.join(' + ') : null,
+    };
+
+    if (result.stage === 'complete') {
+      return { branch: 'complete', scene: scene, raw: rawText, extracted: extracted };
+    }
+    if (result.stage === 'assumption') {
+      var missingFields = result.missingFields || [];
+      var assumed = {};
+      missingFields.forEach(function(f) {
+        if (f === 'budget') assumed['预算'] = '人均 ¥150';
+        if (f === 'district') assumed['地点'] = '当前位置附近';
+        if (f === 'preferences') assumed['偏好'] = '综合体验';
+      });
+      return { branch: 'assumption', scene: scene, raw: rawText, extracted: extracted, assumed: assumed };
+    }
+    if (result.stage === 'followup') {
+      var questions = (result.followupQuestions || []).map(function(q) {
+        return { id: q.id, label: q.label, options: q.options || [] };
+      });
+      if (questions.length === 0) {
+        questions = [
+          { id: 'scene', label: '你想规划哪类路线？', options: ['朋友聚会', '情侣约会', '一个人放松', '亲子遛娃'] },
+          { id: 'place', label: '想在哪附近？', options: ['当前位置附近', '地铁站附近', '指定商圈', '输入地点'] },
+        ];
+      }
+      return { branch: 'followup', scene: scene, raw: rawText, questions: questions };
+    }
+    if (result.stage === 'conflict') {
+      var conditions = (result.conflicts || []).map(function(c) {
+        return { id: c.id, label: c.label, hint: c.hint || '' };
+      });
+      return { branch: 'conflict', scene: scene || '朋友聚会', raw: rawText, conditions: conditions };
+    }
+    return { branch: 'complete', scene: scene, raw: rawText, extracted: extracted };
+  };
+
+  // Detect scene from UserIntent fields
+  const detectSceneFromIntent = (intent) => {
+    if (!intent) return null;
+    var cats = (intent.preferredCategories || []).join(' ');
+    var kw = (intent.keywords || []).join(' ');
+    var sp = intent.specialRequest || '';
+    var all = cats + ' ' + kw + ' ' + sp;
+    if (/约会|情侣|男友|女友/.test(all)) return '情侣约会';
+    if (/亲子|遛娃|带娃|小孩|宝宝/.test(all)) return '亲子遛娃';
+    if (/朋友|聚会|哥们|姐妹|同事/.test(all)) return '朋友聚会';
+    if (/一个人|独自|发呆|放空|放松/.test(all)) return '一个人放松';
+    if (/下班|加班|回血/.test(all)) return '下班回血';
+    if (/救场|临时|马上/.test(all)) return '临时救场';
+    return (intent.preferredCategories || []).length > 0 ? '朋友聚会' : null;
+  };
+
   // ─── NL path entry (composer send) — appends to conversation ──
-  const handleSend = (text) => {
+  const handleSend = async (text) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
     // Detect adjustment intent first — short queries like "少走一点路"
     const adj = window.detectAdjustmentIntent && window.detectAdjustmentIntent(trimmed);
 
-    setChatState((s) => {
-      // ── Adjustment path: treat as chip-like adjustment ──
-      if (adj && adj.isAdjustment && s.stage === 'route' && s.routes && s.routes.length > 0) {
-        var prevMessages = s.conversationMessages || [];
-        // Push current route to history
-        prevMessages = prevMessages.concat([{
-          type: 'route', scene: s.scene, answers: s.answers,
-          defaulted: !!s.defaulted, routes: s.routes,
-          chipLabel: s.activeChip, _key: Date.now(),
-        }]);
-        // Append user message
-        prevMessages = prevMessages.concat([{
-          type: 'user', text: trimmed, _key: Date.now() + 1,
-        }]);
+    // Read current state snapshot for the adjustment check
+    const snap = chatState;
+
+    // ── Adjustment path: treat as chip-like adjustment ──
+    if (adj && adj.isAdjustment && snap.stage === 'route' && snap.routes && snap.routes.length > 0) {
+      setChatState((s) => {
+        var prevMessages = (s.conversationMessages || []).concat([
+          { type: 'route', scene: s.scene, answers: s.answers, defaulted: !!s.defaulted, routes: s.routes, chipLabel: s.activeChip, _key: Date.now() },
+          { type: 'user', text: trimmed, _key: Date.now() + 1 },
+        ]);
         var sid = s.sessionId || window.getSessionId();
-        window.adjustWithFallback(sid, adj.chipLabel, s.routes).then((result) => {
+        window.adjustWithFallback(sid, adj.chipLabel, s.routes, city).then((result) => {
           setChatState((s2) => ({
             ...s2, stage: 'route',
             routes: result.routes,
@@ -138,47 +194,60 @@ function App() {
           }));
         });
         return { ...s, stage: 'generating', activeChip: adj.chipLabel, conversationMessages: prevMessages, routes: null };
-      }
+      });
+      return;
+    }
 
-      // ── Standard NL path ──
-      const analysis = window.analyzeNL(trimmed);
-
-      // Save current route block to history before replacing
-      var prevMessages = s.conversationMessages || [];
-      if (s.stage === 'route' && s.routes && s.routes.length > 0) {
-        prevMessages = prevMessages.concat([{
-          type: 'route', scene: s.scene, answers: s.answers,
-          defaulted: !!s.defaulted, routes: s.routes,
-          chipLabel: s.activeChip, _key: Date.now(),
-        }]);
-      }
-      // Append user message
+    // ── Build conversation history ──
+    var prevMessages = (snap.conversationMessages || []).slice();
+    if (snap.stage === 'route' && snap.routes && snap.routes.length > 0) {
       prevMessages = prevMessages.concat([{
-        type: 'user', text: trimmed, _key: Date.now() + 1,
+        type: 'route', scene: snap.scene, answers: snap.answers,
+        defaulted: !!snap.defaulted, routes: snap.routes,
+        chipLabel: snap.activeChip, _key: Date.now(),
       }]);
+    }
+    prevMessages = prevMessages.concat([{
+      type: 'user', text: trimmed, _key: Date.now() + 1,
+    }]);
 
-      var sid = s.sessionId || window.getSessionId();
-      var base = {
-        ...s,
-        stage: 'generating', userText: trimmed,
-        scene: analysis.scene, nl: analysis,
-        conversationMessages: prevMessages,
-        sessionId: sid, routes: null,
-        defaulted: false, conflictPriority: null, activeChip: null,
-      };
+    var sid = snap.sessionId || window.getSessionId();
 
-      if (analysis.branch === 'complete' || analysis.branch === 'assumption') {
-        window.planWithFallback(trimmed, analysis.scene, {}).then((result) => {
-          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId || sid }));
-        });
-        return base;
-      } else if (analysis.branch === 'followup') {
-        return { ...base, stage: 'nl_followup' };
-      } else if (analysis.branch === 'conflict') {
-        return { ...base, stage: 'nl_conflict' };
-      }
-      return base;
-    });
+    // Set generating state immediately
+    setChatState((prev) => ({
+      ...prev,
+      stage: 'generating', userText: trimmed,
+      scene: null, nl: null, answers: {},
+      conversationMessages: prevMessages,
+      sessionId: sid, routes: null,
+      defaulted: false, conflictPriority: null, activeChip: null,
+    }));
+
+    // ── Run analysis asynchronously (API first, fallback to heuristic) ──
+    var apiResult = await window.analyzeIntent(trimmed, sid, city);
+    var analysis = apiResult ? mapApiToNL(apiResult, trimmed) : window.analyzeNL(trimmed);
+
+    if (analysis.branch === 'complete' || analysis.branch === 'assumption') {
+      window.planWithFallback(trimmed, analysis.scene, {}, city).then((result) => {
+        setChatState((s2) => ({
+          ...s2, stage: 'route', scene: analysis.scene, nl: analysis,
+          routes: result.routes, sessionId: result.sessionId || sid,
+        }));
+      });
+      // Keep generating state until planWithFallback resolves
+    } else if (analysis.branch === 'followup') {
+      setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: analysis.scene, nl: analysis }));
+    } else if (analysis.branch === 'conflict') {
+      setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: analysis.scene, nl: analysis }));
+    } else {
+      // Fallback: treat as complete
+      window.planWithFallback(trimmed, analysis.scene, {}, city).then((result) => {
+        setChatState((s2) => ({
+          ...s2, stage: 'route', scene: analysis.scene, nl: analysis,
+          routes: result.routes, sessionId: result.sessionId || sid,
+        }));
+      });
+    }
   };
 
   // ─── NL followup: record answer, auto-generate when all done ─
@@ -196,7 +265,7 @@ function App() {
         prevMessages = prevMessages.concat([{
           type: 'user', text: query, _key: Date.now(),
         }]);
-        window.planWithFallback(query, nextScene, nextAnswers).then((result) => {
+        window.planWithFallback(query, nextScene, nextAnswers, city).then((result) => {
           setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, conversationMessages: prevMessages, sessionId: result.sessionId || s2.sessionId }));
         });
         return { ...s, answers: nextAnswers, stage: 'generating', conversationMessages: prevMessages };
@@ -222,7 +291,7 @@ function App() {
       prevMessages = prevMessages.concat([{
         type: 'user', text: '优先' + priority.label, _key: Date.now() + 1,
       }]);
-      window.planWithFallback(query, s.scene || '朋友聚会', s.answers).then((result) => {
+      window.planWithFallback(query, s.scene || '朋友聚会', s.answers, city).then((result) => {
         setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
       });
       return { ...s, stage: 'generating', conflictPriority: priority, conversationMessages: prevMessages };
@@ -245,7 +314,7 @@ function App() {
       const allDone = cfg && cfg.questions.every((q) => nextAnswers[q.id]);
       if (allDone) {
         const query = window.buildQueryFromScene(s.scene, nextAnswers);
-        window.planWithFallback(query, s.scene, nextAnswers).then((result) => {
+        window.planWithFallback(query, s.scene, nextAnswers, city).then((result) => {
           setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
         });
         return { ...s, answers: nextAnswers, stage: 'generating' };
@@ -258,7 +327,7 @@ function App() {
   const handleSkipCompletion = () => {
     setChatState((s) => {
       const query = window.buildQueryFromScene(s.scene, s.answers);
-      window.planWithFallback(query, s.scene, s.answers).then((result) => {
+      window.planWithFallback(query, s.scene, s.answers, city).then((result) => {
         setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
       });
       return { ...s, stage: 'generating', defaulted: true };
@@ -300,7 +369,7 @@ function App() {
         chipLabel: s.activeChip,
         _key: Date.now(),
       }]);
-      window.adjustWithFallback(sid, label, s.routes).then((result) => {
+      window.adjustWithFallback(sid, label, s.routes, city).then((result) => {
         setChatState((s2) => ({
           ...s2, stage: 'route',
           routes: result.routes,

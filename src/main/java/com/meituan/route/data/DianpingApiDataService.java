@@ -5,7 +5,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.annotation.Profile;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -33,8 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Authentication: Bearer token via Authorization header.
  */
 @Service
-@ConditionalOnExpression("#{environment.getActiveProfiles().length > 0 && " +
-        "'dianping'.equals(environment.getActiveProfiles()[0])}")
+@Profile("dianping")
 @Primary
 public class DianpingApiDataService implements DataService {
 

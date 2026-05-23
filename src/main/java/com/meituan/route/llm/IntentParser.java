@@ -1,5 +1,6 @@
 package com.meituan.route.llm;
 
+import com.meituan.route.model.IntentAnalysisResult;
 import com.meituan.route.model.UserIntent;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import org.slf4j.Logger;
@@ -58,7 +59,7 @@ public class IntentParser {
     public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env) {
         this.chatModel = chatModel.orElse(null);
         this.mockProfile = java.util.Arrays.asList(env.getActiveProfiles()).contains("mock");
-        this.llmAvailable = this.chatModel != null && !mockProfile;
+        this.llmAvailable = this.chatModel != null;
         log.info("IntentParser initialized (LLM: {}, mock: {})", llmAvailable ? "enabled" : "disabled", mockProfile);
     }
 
@@ -81,6 +82,130 @@ public class IntentParser {
 
         // Tier 2: Rule-based fallback
         return parseWithRules(query, sessionId);
+    }
+
+    /**
+     * Parse query into intent AND analyze completeness for requirement completion.
+     * Returns stage (complete/assumption/followup/conflict), missing fields,
+     * and generated followup questions.
+     */
+    public IntentAnalysisResult analyzeWithCompleteness(String query, String sessionId) {
+        var intent = parse(query, sessionId);
+        return assessCompleteness(intent);
+    }
+
+    /**
+     * Assess how complete the parsed intent is and generate followup questions.
+     */
+    private IntentAnalysisResult assessCompleteness(UserIntent intent) {
+        // Check key field presence
+        boolean hasCategories = intent.preferredCategories() != null && !intent.preferredCategories().isEmpty();
+        boolean hasDistrict = intent.district() != null && !intent.district().isBlank();
+        boolean hasCuisine = intent.cuisinePreference() != null && !intent.cuisinePreference().isBlank();
+        boolean hasBudget = intent.budget() > 0;
+        boolean hasKeywords = intent.keywords() != null && !intent.keywords().isEmpty();
+        boolean hasSpecial = intent.specialRequest() != null && !intent.specialRequest().isBlank();
+        boolean hasTime = intent.startTime() != null;
+
+        var missing = new java.util.ArrayList<String>();
+        if (!hasCategories) missing.add("categories");
+        if (!hasDistrict) missing.add("district");
+        if (!hasBudget) missing.add("budget");
+        if (!hasKeywords && !hasSpecial && !hasCuisine) missing.add("preferences");
+
+        int filled = (hasCategories ? 1 : 0) + (hasDistrict ? 1 : 0)
+                + (hasBudget ? 1 : 0) + (hasKeywords || hasSpecial || hasCuisine ? 1 : 0);
+
+        // Detect conflicts: high demand + low budget
+        boolean highDemand = (hasKeywords && intent.keywords().stream().anyMatch(
+                k -> k.contains("拍照") || k.contains("网红") || k.contains("氛围")))
+                || (hasSpecial && (intent.specialRequest().contains("氛围") || intent.specialRequest().contains("格调")));
+        boolean lowBudget = hasBudget && intent.budget() < 80;
+        boolean noQueue = intent.maxQueueMinutes() > 0 && intent.maxQueueMinutes() <= 10;
+        boolean highRating = intent.minRating() >= 4.0;
+        int conflictCount = (highDemand ? 1 : 0) + (lowBudget ? 1 : 0) + (noQueue ? 1 : 0) + (highRating ? 1 : 0);
+
+        String stage;
+        List<IntentAnalysisResult.Conflict> conflicts = List.of();
+        List<IntentAnalysisResult.FollowupQuestion> questions = List.of();
+
+        if (conflictCount >= 3) {
+            stage = "conflict";
+            conflicts = buildConflicts(highDemand, lowBudget, noQueue, highRating);
+        } else if (filled >= 3 && hasCategories) {
+            stage = "complete";
+        } else if (filled >= 2) {
+            stage = "assumption";
+            questions = buildFollowupQuestions(missing);
+        } else {
+            stage = "followup";
+            questions = buildFollowupQuestions(missing);
+        }
+
+        var summary = buildSummary(intent, stage);
+        return new IntentAnalysisResult(stage, intent, missing, questions, conflicts, summary);
+    }
+
+    private List<IntentAnalysisResult.Conflict> buildConflicts(boolean highDemand, boolean lowBudget, boolean noQueue, boolean highRating) {
+        var list = new java.util.ArrayList<IntentAnalysisResult.Conflict>();
+        if (highDemand) list.add(new IntentAnalysisResult.Conflict("vibe", "氛围感", "安静、有格调，往往人均偏高"));
+        if (lowBudget) list.add(new IntentAnalysisResult.Conflict("budget", "预算低", "人均 80 元内"));
+        if (noQueue) list.add(new IntentAnalysisResult.Conflict("noqueue", "不排队", "热门店通常需要等位"));
+        if (highRating) list.add(new IntentAnalysisResult.Conflict("rating", "高评分", "4.0以上高分店较热门"));
+        return list;
+    }
+
+    private List<IntentAnalysisResult.FollowupQuestion> buildFollowupQuestions(List<String> missing) {
+        var qs = new java.util.ArrayList<IntentAnalysisResult.FollowupQuestion>();
+        for (var field : missing) {
+            switch (field) {
+                case "categories" -> qs.add(new IntentAnalysisResult.FollowupQuestion(
+                        "scene", "你更想规划哪类路线？",
+                        List.of("朋友聚会", "情侣约会", "一个人放松", "亲子遛娃")));
+                case "district" -> qs.add(new IntentAnalysisResult.FollowupQuestion(
+                        "place", "想在哪附近？",
+                        List.of("当前位置附近", "地铁站附近", "指定商圈", "输入地点")));
+                case "budget" -> qs.add(new IntentAnalysisResult.FollowupQuestion(
+                        "budget", "人均预算大概多少？",
+                        List.of("¥80 以内", "¥150 以内", "¥200 以内", "不设上限")));
+                case "preferences" -> qs.add(new IntentAnalysisResult.FollowupQuestion(
+                        "mood", "更想要什么体验？",
+                        List.of("吃饭聊天", "拍照出片", "安静放松", "随便逛逛")));
+            }
+        }
+        return qs;
+    }
+
+    private String buildSummary(UserIntent intent, String stage) {
+        var sb = new StringBuilder();
+        var cats = intent.preferredCategories();
+        if (cats != null && !cats.isEmpty()) {
+            var names = cats.stream().map(this::categoryName).toList();
+            sb.append(String.join("+", names));
+        } else {
+            sb.append("综合");
+        }
+        if (intent.district() != null && !intent.district().isBlank()) {
+            sb.append(" · ").append(intent.district());
+        }
+        if (intent.budget() > 0) {
+            sb.append(" · 人均¥").append((int) intent.budget());
+        }
+        if (intent.keywords() != null && !intent.keywords().isEmpty()) {
+            sb.append(" · ").append(String.join("、", intent.keywords()));
+        }
+        return sb.toString();
+    }
+
+    private String categoryName(String cat) {
+        return switch (cat) {
+            case "RESTAURANT" -> "美食";
+            case "SHOPPING" -> "购物";
+            case "ATTRACTION" -> "景点";
+            case "ENTERTAINMENT" -> "娱乐";
+            case "CULTURE" -> "文化";
+            default -> cat;
+        };
     }
 
     /**

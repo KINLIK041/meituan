@@ -33,4 +33,11 @@ public record UserIntent(
     public Optional<String> OptimizationGoal() {
         return Optional.ofNullable(optimizationGoal);
     }
+
+    public UserIntent withCity(String newCity) {
+        return new UserIntent(rawQuery, newCity, district, preferredCategories,
+                cuisinePreference, startTime, endTime, budget, partySize,
+                minRating, maxQueueMinutes, travelMode, optimizationGoal,
+                specialRequest, keywords, sessionId);
+    }
 }

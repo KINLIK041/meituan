@@ -1,5 +1,7 @@
 package com.meituan.route;
 
+import com.meituan.route.llm.IntentParser;
+import com.meituan.route.model.IntentAnalysisResult;
 import com.meituan.route.orchestrator.RoutePlannerOrchestrator;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -16,27 +18,40 @@ import java.util.Map;
 public class RouteController {
 
     private final RoutePlannerOrchestrator orchestrator;
+    private final IntentParser intentParser;
 
-    public RouteController(RoutePlannerOrchestrator orchestrator) {
+    public RouteController(RoutePlannerOrchestrator orchestrator, IntentParser intentParser) {
         this.orchestrator = orchestrator;
+        this.intentParser = intentParser;
     }
 
     /**
      * POST /api/route/plan — Generate initial route plan.
-     * Body: { "query": "...", "sessionId": null }
+     * Body: { "query": "...", "sessionId": null, "city": "上海" }
      */
     @PostMapping(value = "/plan", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<RoutePlannerOrchestrator.PlanResponse> plan(@RequestBody PlanRequest request) {
-        return orchestrator.planRoute(request.query(), request.sessionId());
+        return orchestrator.planRoute(request.query(), request.sessionId(), request.city());
+    }
+
+    /**
+     * POST /api/route/analyze — Analyze NL query for intent completeness.
+     * Body: { "query": "...", "sessionId": null, "city": "北京" }
+     * Returns stage + missing fields + followup questions.
+     */
+    @PostMapping(value = "/analyze", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<IntentAnalysisResult> analyze(@RequestBody AnalyzeRequest request) {
+        return Mono.fromCallable(() ->
+                intentParser.analyzeWithCompleteness(request.query(), request.sessionId()));
     }
 
     /**
      * POST /api/route/adjust — Incrementally adjust a route.
-     * Body: { "sessionId": "...", "adjustment": "换一家不排队的" }
+     * Body: { "sessionId": "...", "adjustment": "换一家不排队的", "city": "上海" }
      */
     @PostMapping(value = "/adjust", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<RoutePlannerOrchestrator.PlanResponse> adjust(@RequestBody AdjustRequest request) {
-        return orchestrator.adjustRoute(request.sessionId(), request.adjustment());
+        return orchestrator.adjustRoute(request.sessionId(), request.adjustment(), request.city());
     }
 
     /**
@@ -56,6 +71,7 @@ public class RouteController {
     }
 
     // Request DTOs
-    public record PlanRequest(String query, String sessionId) {}
-    public record AdjustRequest(String sessionId, String adjustment) {}
+    public record PlanRequest(String query, String sessionId, String city) {}
+    public record AnalyzeRequest(String query, String sessionId, String city) {}
+    public record AdjustRequest(String sessionId, String adjustment, String city) {}
 }
