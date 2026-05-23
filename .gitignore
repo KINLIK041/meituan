@@ -33,3 +33,13 @@ Thumbs.db
 
 # Build output
 out/
+
+# React Native / Frontend
+LiquidRoute/node_modules/
+LiquidRoute/android/app/build/
+LiquidRoute/ios/Pods/
+LiquidRoute/ios/build/
+LiquidRoute/*.tsbuildinfo
+
+# Metro bundler
+LiquidRoute/.metro-health-check*

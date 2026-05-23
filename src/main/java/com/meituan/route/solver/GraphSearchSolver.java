@@ -33,7 +33,9 @@ public class GraphSearchSolver {
 
     /**
      * Generate multiple route plans from candidate POIs.
-     * Uses beam search with multiple optimization objectives.
+     * Each plan uses a different objective and a different subset of candidates
+     * to ensure diversity — without this, all three goals converge on the same
+     * high-rated POIs (e.g., 故宫).
      */
     public List<Route> generatePlans(List<POI> candidates, List<Constraint> constraints,
                                      UserIntent intent, int numPlans) {
@@ -41,27 +43,46 @@ public class GraphSearchSolver {
             return handleInsufficientPOIs(candidates, intent);
         }
 
-        // Build POI graph
-        var graph = buildGraph(candidates, intent);
-
-        // Generate plans with different objectives
         var goals = List.of("BEST_EXPERIENCE", "FASTEST", "CHEAPEST");
         var routes = new ArrayList<Route>();
+        var usedIds = new HashSet<String>();
 
-        // Use virtual threads via parallel stream for plan generation
-        routes.addAll(goals.parallelStream()
-                .limit(numPlans)
-                .map(goal -> searchBestRoute(graph, candidates, constraints, intent, goal))
-                .filter(Objects::nonNull)
-                .toList());
+        for (var goal : goals) {
+            if (routes.size() >= numPlans) break;
 
-        // If we got too many routes, score and keep best ones
-        if (routes.size() > numPlans) {
-            routes.sort((a, b) -> Double.compare(b.score(), a.score()));
-            routes.subList(numPlans, routes.size()).clear();
+            // Build a goal-specific candidate pool — sort by the goal's score
+            var goalCandidates = selectCandidatesForGoal(candidates, goal);
+
+            // Remove POIs already heavily used in previous routes to force diversity
+            if (!usedIds.isEmpty()) {
+                var diverse = new ArrayList<>(goalCandidates);
+                diverse.removeIf(p -> usedIds.contains(p.id()));
+                if (diverse.size() >= 3) {
+                    goalCandidates = diverse;
+                }
+            }
+
+            var graph = buildGraph(goalCandidates, intent);
+            var route = searchBestRoute(graph, goalCandidates, constraints, intent, goal);
+            if (route != null && route.segments().size() >= 2) {
+                routes.add(route);
+                route.segments().forEach(s -> usedIds.add(s.poi().id()));
+            }
         }
 
-        // Add scores and descriptions
+        // Fallback: if diversity strategy produced too few routes, re-run without exclusion
+        if (routes.size() < 2) {
+            var fallbackGoals = goals.subList(routes.size(), goals.size());
+            for (var goal : fallbackGoals) {
+                var graph = buildGraph(candidates, intent);
+                var route = searchBestRoute(graph, candidates, constraints, intent, goal);
+                if (route != null && route.segments().size() >= 2) {
+                    routes.add(route);
+                }
+            }
+        }
+
+        // Add names and descriptions
         int idx = 0;
         for (var r : routes) {
             String name = switch (r.optimizationGoal()) {
@@ -78,6 +99,30 @@ public class GraphSearchSolver {
         }
 
         return routes;
+    }
+
+    /**
+     * Select top candidates for a specific optimization goal.
+     * Different goals prioritize different dimensions so each route
+     * explores a different region of the POI space.
+     */
+    private List<POI> selectCandidatesForGoal(List<POI> candidates, String goal) {
+        var sorted = new ArrayList<>(candidates);
+        switch (goal) {
+            case "BEST_EXPERIENCE" -> sorted.sort((a, b) -> Double.compare(
+                    b.rating() * 20 + b.popularityScore() * 0.3,
+                    a.rating() * 20 + a.popularityScore() * 0.3));
+            case "FASTEST" -> sorted.sort((a, b) -> Double.compare(
+                    (100.0 - Math.min(a.visitDuration(), 100)) * 0.5 + a.rating() * 5,
+                    (100.0 - Math.min(b.visitDuration(), 100)) * 0.5 + b.rating() * 5));
+            case "CHEAPEST" -> sorted.sort((a, b) -> Double.compare(
+                    Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5,
+                    Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5));
+            default -> sorted.sort((a, b) -> Double.compare(
+                    b.rating() * 10 + b.popularityScore() * 0.2,
+                    a.rating() * 10 + a.popularityScore() * 0.2));
+        }
+        return sorted.subList(0, Math.min(15, sorted.size()));
     }
 
     /**

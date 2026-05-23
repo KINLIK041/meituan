@@ -10,6 +10,30 @@ spring:
       write-dates-as-timestamps: false
     date-format: yyyy-MM-dd HH:mm:ss
 
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/liquidroute}
+    username: ${SPRING_DATASOURCE_USERNAME:liquidroute}
+    password: ${SPRING_DATASOURCE_PASSWORD:liquidroute}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
 server:
   port: 8080
 
@@ -19,8 +43,8 @@ server:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${DEEPSEEK_API_KEY:sk-f159def9d5344341bafaea5f56fde07a}
-      model-name: ${LLM_MODEL:deepseek-chat}
+      api-key: ${DEEPSEEK_API_KEY:sk-3f7053c82b7b4089b82ce3c2cec4d627}
+      model-name: ${LLM_MODEL:deepseek-v4-flash}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
       timeout: 60000
@@ -28,8 +52,8 @@ langchain4j:
       log-requests: false
       log-responses: false
     streaming-chat-model:
-      api-key: ${DEEPSEEK_API_KEY:sk-f159def9d5344341bafaea5f56fde07a}
-      model-name: ${LLM_MODEL:deepseek-chat}
+      api-key: ${DEEPSEEK_API_KEY:sk-3f7053c82b7b4089b82ce3c2cec4d627}
+      model-name: ${LLM_MODEL:deepseek-v4-flash}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
 
@@ -41,6 +65,14 @@ meituan:
     token: ${MEITUAN_API_TOKEN:03e504ec186d18269d1fbdbb4d7f9090996c0e505a49bc845dd00e5ed472c8c6}
     base-url: https://api-open.meituan.com
     dianping-base-url: https://api.dianping.com/v1
+
+# ──────────────────────────────────────────────
+# 高德地图 Web 服务 API (地理编码/逆地理编码)
+# ──────────────────────────────────────────────
+gaode:
+  api:
+    key: ${GAODE_API_KEY:4777a02ec302c8ed9dc0e880e7e565d8}
+    base-url: https://restapi.amap.com
 
 # Actuator endpoints
 management:

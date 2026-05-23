@@ -30,7 +30,7 @@ public record UserIntent(
         return List.of();
     }
 
-    public Optional<String> optimizationGoal() {
+    public Optional<String> OptimizationGoal() {
         return Optional.ofNullable(optimizationGoal);
     }
 }

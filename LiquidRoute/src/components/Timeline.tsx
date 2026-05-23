@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import type { Route, RouteSegment } from '../types';
 import { categoryIcons, transportModeIcons } from '../types';
+import RouteMap from './RouteMap';
 
 interface TimelineProps {
   route: Route;
@@ -32,6 +33,11 @@ const Timeline: React.FC<TimelineProps> = ({ route }) => {
             ⭐ {route.totalRating.toFixed(1)}
           </Text>
         </View>
+      </View>
+
+      {/* 路线地图 */}
+      <View style={styles.mapWrapper}>
+        <RouteMap route={route} interactive />
       </View>
 
       {route.segments.map((seg, index) => (
@@ -169,6 +175,11 @@ const styles = StyleSheet.create({
     width: 1,
     height: 30,
     backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  mapWrapper: {
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
 });
 

@@ -43,11 +43,14 @@ public class IntentParser {
             Map.entry("艺术", "CULTURE")
     );
 
-    private static final Map<String, String> DISTRICT_MAP = Map.of(
-            "三里屯", "三里屯", "国贸", "国贸", "王府井", "王府井", "前门", "前门",
-            "东城", "东城", "西城", "西城", "海淀", "海淀",
-            "外滩", "外滩", "陆家嘴", "陆家嘴", "新天地", "新天地",
-            "南京路", "南京路", "静安寺", "静安寺", "浦东", "浦东"
+    private static final Map<String, String> DISTRICT_MAP = Map.ofEntries(
+            Map.entry("三里屯", "三里屯"), Map.entry("国贸", "国贸"),
+            Map.entry("王府井", "王府井"), Map.entry("前门", "前门"),
+            Map.entry("东城", "东城"), Map.entry("西城", "西城"),
+            Map.entry("海淀", "海淀"),
+            Map.entry("外滩", "外滩"), Map.entry("陆家嘴", "陆家嘴"),
+            Map.entry("新天地", "新天地"), Map.entry("南京路", "南京路"),
+            Map.entry("静安寺", "静安寺"), Map.entry("浦东", "浦东")
     );
 
     public IntentParser(Optional<ChatLanguageModel> chatModel) {
@@ -111,8 +114,7 @@ public class IntentParser {
                 - "省钱"→goal=CHEAPEST，"省时"→goal=FASTEST
                 """.formatted(query);
 
-        var response = chatModel.generate(prompt);
-        var json = response.content().text();
+        var json = chatModel.chat(prompt);
 
         // Parse the JSON response
         return parseLLMResponse(json, query, sessionId);

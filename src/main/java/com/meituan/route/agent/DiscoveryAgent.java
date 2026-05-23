@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -102,6 +103,50 @@ public class DiscoveryAgent {
             tags.addAll(intent.keywords());
         }
         return tags;
+    }
+
+    /**
+     * Create a broad intent for speculative discovery — search all categories
+     * in the default city while LLM parses the real intent in parallel.
+     */
+    public static UserIntent broadIntent(String defaultCity) {
+        return new UserIntent(
+                "", defaultCity, null,
+                null, // all categories
+                null,
+                java.time.LocalTime.of(14, 0), java.time.LocalTime.of(22, 0),
+                0, 2, 3.5, 30,
+                "WALKING", "BEST_EXPERIENCE",
+                null, List.of(), null
+        );
+    }
+
+    /**
+     * Filter speculative discovery results to match the parsed intent's categories.
+     * When speculative results already exist, this avoids a second API call.
+     */
+    public DiscoveryResult filterForIntent(DiscoveryResult speculative, UserIntent intent) {
+        var targetCats = intent.preferredCategories();
+        if (targetCats == null || targetCats.isEmpty()) {
+            return speculative; // broad search already covers all
+        }
+
+        var targetSet = new java.util.HashSet<>(targetCats.stream()
+                .map(String::toUpperCase).toList());
+
+        var filtered = speculative.candidates().stream()
+                .filter(poi -> {
+                    var cat = poi.category() != null ? poi.category().toUpperCase() : "";
+                    return targetSet.contains(cat) || targetSet.stream().anyMatch(cat::contains);
+                })
+                .sorted(java.util.Comparator.<POI, Double>comparing(p -> -p.rating())
+                        .thenComparing(p -> -p.popularityScore()))
+                .limit(20)
+                .toList();
+
+        log.info("DiscoveryAgent filtered speculative {} POIs → {} POIs for intent categories",
+                speculative.candidates().size(), filtered.size());
+        return new DiscoveryResult(filtered, categorizePOIs(filtered), intent);
     }
 
     public record DiscoveryResult(
