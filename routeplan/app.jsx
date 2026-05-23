@@ -55,6 +55,7 @@ const INITIAL_STATE = {
   routes: null,       // API response routes for RouteOptionsCard
   sessionId: null,    // backend session id
   detailRoute: null,  // selected route for detail page
+  conversationMessages: [], // accumulated route-history blocks for chat-like flow
 };
 
 function App() {
@@ -63,62 +64,121 @@ function App() {
   const [history, setHistory] = useStateApp([]); // top-right history panel data
   const [historyOpen, setHistoryOpen] = useStateApp(false);
   const [toast, setToast] = useStateApp(null);
+  const [city, setCity] = useStateApp('北京');
 
-  // Push a snapshot into top-right history every time we land on 'route'.
-  // Replays load the snapshot back into chatState and SUPPRESS recording.
+  // Save current conversation to history (called when user starts a new one).
+  // Records at the conversation level, not per-route.
   const recordRef = React.useRef({ suppress: false });
 
-  useEffectApp(() => {
-    if (chatState.stage !== 'route') return;
+  const saveConversationToHistory = (s) => {
     if (recordRef.current.suppress) {
       recordRef.current.suppress = false;
       return;
     }
-    const entry = {
-      ts: Date.now(),
-      timeLabel: '刚刚',
-      kind: chatState.activeChip ? 'chip' : (chatState.userText ? 'nl' : 'scene'),
-      chipLabel: chatState.activeChip,
-      scene: chatState.scene,
-      userText: chatState.userText,
-      answers: chatState.answers,
-      defaulted: chatState.defaulted,
-      nl: chatState.nl,
-      conflictPriority: chatState.conflictPriority,
-      activeChip: chatState.activeChip,
-      routes: chatState.routes,
-      sessionId: chatState.sessionId,
-    };
-    setHistory((h) => [...h, entry]);
-  }, [chatState.stage, chatState.activeChip, chatState.userText, chatState.scene]);
+    // Only save if there's meaningful conversation (has routes or messages)
+    const msgs = s.conversationMessages || [];
+    const hasContent = s.routes || msgs.length > 0 || s.scene;
+    if (!hasContent) return;
+
+    // Find first user message as conversation summary
+    const firstUserMsg = msgs.find(function(m) { return m.type === 'user'; });
+    const routeMsgs = msgs.filter(function(m) { return m.type === 'route'; });
+
+    setHistory(function(h) {
+      return h.concat([{
+        ts: Date.now(),
+        timeLabel: '刚刚',
+        scene: s.scene || (firstUserMsg ? '对话' : '未指定'),
+        firstQuery: firstUserMsg ? firstUserMsg.text : null,
+        messageCount: msgs.length,
+        turnCount: routeMsgs.length + (s.routes ? 1 : 0),
+        routes: s.routes,
+        sessionId: s.sessionId,
+        conversationMessages: msgs,
+      }]);
+    });
+  };
 
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 1800);
   };
+  // Expose for cross-component use (FavoritesPanel, RouteOption, etc.)
+  window.showToast = showToast;
 
-  // ─── NL path entry (composer send) ───────────────────────────
+  // ─── NL path entry (composer send) — appends to conversation ──
   const handleSend = (text) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const analysis = window.analyzeNL(trimmed);
-    const base = {
-      ...INITIAL_STATE,
-      userText: trimmed,
-      scene: analysis.scene,
-      nl: analysis,
-    };
 
-    if (analysis.branch === 'complete' || analysis.branch === 'assumption') {
-      setChatState({ ...base, stage: 'generating' });
-      window.planWithFallback(trimmed, analysis.scene, {}).then((result) => {
-        setChatState((s) => ({ ...s, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
-      });
-    } else if (analysis.branch === 'followup') {
-      setChatState({ ...base, stage: 'nl_followup' });
-    } else if (analysis.branch === 'conflict') {
-      setChatState({ ...base, stage: 'nl_conflict' });
-    }
+    // Detect adjustment intent first — short queries like "少走一点路"
+    const adj = window.detectAdjustmentIntent && window.detectAdjustmentIntent(trimmed);
+
+    setChatState((s) => {
+      // ── Adjustment path: treat as chip-like adjustment ──
+      if (adj && adj.isAdjustment && s.stage === 'route' && s.routes && s.routes.length > 0) {
+        var prevMessages = s.conversationMessages || [];
+        // Push current route to history
+        prevMessages = prevMessages.concat([{
+          type: 'route', scene: s.scene, answers: s.answers,
+          defaulted: !!s.defaulted, routes: s.routes,
+          chipLabel: s.activeChip, _key: Date.now(),
+        }]);
+        // Append user message
+        prevMessages = prevMessages.concat([{
+          type: 'user', text: trimmed, _key: Date.now() + 1,
+        }]);
+        var sid = s.sessionId || window.getSessionId();
+        window.adjustWithFallback(sid, adj.chipLabel, s.routes).then((result) => {
+          setChatState((s2) => ({
+            ...s2, stage: 'route',
+            routes: result.routes,
+            conversationMessages: prevMessages,
+            sessionId: result.sessionId || sid,
+          }));
+        });
+        return { ...s, stage: 'generating', activeChip: adj.chipLabel, conversationMessages: prevMessages, routes: null };
+      }
+
+      // ── Standard NL path ──
+      const analysis = window.analyzeNL(trimmed);
+
+      // Save current route block to history before replacing
+      var prevMessages = s.conversationMessages || [];
+      if (s.stage === 'route' && s.routes && s.routes.length > 0) {
+        prevMessages = prevMessages.concat([{
+          type: 'route', scene: s.scene, answers: s.answers,
+          defaulted: !!s.defaulted, routes: s.routes,
+          chipLabel: s.activeChip, _key: Date.now(),
+        }]);
+      }
+      // Append user message
+      prevMessages = prevMessages.concat([{
+        type: 'user', text: trimmed, _key: Date.now() + 1,
+      }]);
+
+      var sid = s.sessionId || window.getSessionId();
+      var base = {
+        ...s,
+        stage: 'generating', userText: trimmed,
+        scene: analysis.scene, nl: analysis,
+        conversationMessages: prevMessages,
+        sessionId: sid, routes: null,
+        defaulted: false, conflictPriority: null, activeChip: null,
+      };
+
+      if (analysis.branch === 'complete' || analysis.branch === 'assumption') {
+        window.planWithFallback(trimmed, analysis.scene, {}).then((result) => {
+          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId || sid }));
+        });
+        return base;
+      } else if (analysis.branch === 'followup') {
+        return { ...base, stage: 'nl_followup' };
+      } else if (analysis.branch === 'conflict') {
+        return { ...base, stage: 'nl_conflict' };
+      }
+      return base;
+    });
   };
 
   // ─── NL followup: record answer, auto-generate when all done ─
@@ -131,10 +191,15 @@ function App() {
           ? nextAnswers.scene
           : s.scene || '朋友聚会';
         const query = window.buildQueryFromScene(nextScene, nextAnswers);
+        // Append followup answers as a user message
+        var prevMessages = s.conversationMessages || [];
+        prevMessages = prevMessages.concat([{
+          type: 'user', text: query, _key: Date.now(),
+        }]);
         window.planWithFallback(query, nextScene, nextAnswers).then((result) => {
-          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
+          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, conversationMessages: prevMessages, sessionId: result.sessionId || s2.sessionId }));
         });
-        return { ...s, answers: nextAnswers, stage: 'generating' };
+        return { ...s, answers: nextAnswers, stage: 'generating', conversationMessages: prevMessages };
       }
       return { ...s, answers: nextAnswers };
     });
@@ -144,19 +209,31 @@ function App() {
   const handleConflictPriority = (priority) => {
     setChatState((s) => {
       const query = `${s.userText}，优先${priority.label}`;
+      // Save current route block to conversation history
+      var prevMessages = s.conversationMessages || [];
+      if (s.stage === 'route' && s.routes && s.routes.length > 0) {
+        prevMessages = prevMessages.concat([{
+          type: 'route', scene: s.scene, answers: s.answers,
+          defaulted: !!s.defaulted, routes: s.routes,
+          chipLabel: s.activeChip, _key: Date.now(),
+        }]);
+      }
+      // Append user choice as a user message
+      prevMessages = prevMessages.concat([{
+        type: 'user', text: '优先' + priority.label, _key: Date.now() + 1,
+      }]);
       window.planWithFallback(query, s.scene || '朋友聚会', s.answers).then((result) => {
         setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
       });
-      return { ...s, stage: 'generating', conflictPriority: priority };
+      return { ...s, stage: 'generating', conflictPriority: priority, conversationMessages: prevMessages };
     });
   };
 
   // ─── Scene-tap entry (welcome grid) ──────────────────────────
   const handlePickScene = (scene) => {
-    setChatState({
-      ...INITIAL_STATE,
-      stage: 'completing',
-      scene,
+    setChatState(function(s) {
+      saveConversationToHistory(s);
+      return { ...INITIAL_STATE, stage: 'completing', scene };
     });
   };
 
@@ -200,7 +277,12 @@ function App() {
   };
 
   // ─── Top-of-completion "换一个" — back home ──────────────────
-  const handleResetScene = () => setChatState(INITIAL_STATE);
+  const handleResetScene = () => {
+    setChatState(function(s) {
+      saveConversationToHistory(s);
+      return INITIAL_STATE;
+    });
+  };
 
   const handleAddMore = () => showToast('请在下方继续补充你的需求');
 
@@ -208,37 +290,54 @@ function App() {
     setChatState((s) => {
       if (s.stage !== 'route') return s;
       const sid = s.sessionId || window.getSessionId();
+      // Push current route block to conversation history before replacing
+      const prevMessages = (s.conversationMessages || []).concat([{
+        type: 'route',
+        scene: s.scene,
+        answers: s.answers,
+        defaulted: s.defaulted,
+        routes: s.routes,
+        chipLabel: s.activeChip,
+        _key: Date.now(),
+      }]);
       window.adjustWithFallback(sid, label, s.routes).then((result) => {
-        setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId || sid }));
+        setChatState((s2) => ({
+          ...s2, stage: 'route',
+          routes: result.routes,
+          conversationMessages: prevMessages,
+          sessionId: result.sessionId || sid,
+        }));
       });
-      return { ...s, stage: 'generating', activeChip: label };
+      return { ...s, stage: 'generating', activeChip: label, conversationMessages: prevMessages };
     });
   };
 
   const handleOpenHistory = () => setHistoryOpen(true);
   const handleCloseHistory = () => setHistoryOpen(false);
   const handleNewConversation = () => {
-    recordRef.current.suppress = true;
+    setChatState(function(s) {
+      saveConversationToHistory(s);
+      recordRef.current.suppress = true;
+      return { ...INITIAL_STATE, conversationMessages: [] };
+    });
     setHistoryOpen(false);
-    setChatState(INITIAL_STATE);
   };
   const handleReplayHistory = (idx) => {
     const entry = history[idx];
     if (!entry) return;
     recordRef.current.suppress = true;
     setHistoryOpen(false);
+    // Derive NL path flag from whether there are user messages
+    const msgs = entry.conversationMessages || [];
+    const firstUser = msgs.find(function(m) { return m.type === 'user'; });
     setChatState({
       ...INITIAL_STATE,
       stage: 'route',
-      scene: entry.scene,
-      userText: entry.userText || '',
-      answers: entry.answers || {},
-      defaulted: !!entry.defaulted,
-      nl: entry.nl || null,
-      conflictPriority: entry.conflictPriority || null,
-      activeChip: entry.activeChip || null,
+      scene: entry.scene || '朋友聚会',
+      userText: firstUser ? firstUser.text : '',
       routes: entry.routes || null,
       sessionId: entry.sessionId || null,
+      conversationMessages: msgs,
     });
   };
 
@@ -252,6 +351,8 @@ function App() {
           {page === 'chat' && (
             <ChatScreen
               chatState={chatState}
+              city={city}
+              onCityChange={setCity}
               onSend={handleSend}
               onPickScene={handlePickScene}
               onAnswer={handleAnswer}

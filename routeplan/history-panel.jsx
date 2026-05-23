@@ -174,7 +174,7 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
                         fontSize: 10.5, color: '#8e8e93', fontWeight: 600,
                         letterSpacing: 0.8, textTransform: 'uppercase',
                       }}>
-                        {h.kind === 'chip' ? '调整' : (h.userText ? '输入' : '场景')}
+                        对话
                       </span>
                       <span style={{
                         fontSize: 13, fontWeight: 600, color: '#1a1a1a',
@@ -187,7 +187,9 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
                   </div>
 
                   <div style={{ fontSize: 12.5, color: '#48484A', lineHeight: 1.5, marginBottom: 8 }}>
-                    {summarizeSnapshot(h)}
+                    {h.firstQuery
+                      ? (h.firstQuery.length > 32 ? h.firstQuery.slice(0, 32) + '…' : h.firstQuery)
+                      : '场景模式 · 选条件生成'}
                   </div>
 
                   <div style={{
@@ -195,7 +197,7 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
                     paddingTop: 8, borderTop: '1px dashed #E8E8EA',
                     fontSize: 11, color: '#8e8e93',
                   }}>
-                    <span>{routeCountForScene(h)} 条候选路线</span>
+                    <span>{h.turnCount || 1} 轮对话 · {routesCount(h)} 条路线</span>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', gap: 3,
                       color: '#1a1a1a', fontWeight: 500,
@@ -214,24 +216,9 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────
-function summarizeSnapshot(h) {
-  if (h.kind === 'chip') {
-    return `按「${h.chipLabel}」重新挑选`;
-  }
-  if (h.userText) {
-    return h.userText.length > 36 ? h.userText.slice(0, 36) + '…' : h.userText;
-  }
-  // scene-tap or scene-tap with answers
-  const order = ['time', 'place', 'budget', 'mood'];
-  const parts = order.map((k) => h.answers && h.answers[k]).filter(Boolean);
-  if (parts.length === 0) return '按默认设定生成';
-  return parts.join(' · ');
-}
-
-function routeCountForScene(h) {
+function routesCount(h) {
   if (h.routes && h.routes.length) return h.routes.length;
-  const ROUTE_OPTIONS = window.ROUTE_OPTIONS || {};
-  return (ROUTE_OPTIONS[h.scene] || ROUTE_OPTIONS['朋友聚会'] || []).length;
+  return 0;
 }
 
 Object.assign(window, { HistoryPanel });

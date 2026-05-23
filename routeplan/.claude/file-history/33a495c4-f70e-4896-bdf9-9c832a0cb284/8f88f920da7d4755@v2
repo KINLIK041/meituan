@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  route-planner:
+    build: .
+    container_name: ai-route-planner
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=mock
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-demo-key}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/route/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Optional Redis for session persistence (future)
+  redis:
+    image: redis:7-alpine
+    container_name: route-redis
+    ports:
+      - "6379:6379"
+    profiles:
+      - with-redis

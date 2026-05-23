@@ -117,7 +117,7 @@ public class RoutePlannerOrchestrator {
                         ));
                     });
                 })
-                .timeout(Duration.ofSeconds(30));
+                .timeout(Duration.ofSeconds(15));
     }
 
     private boolean hasSpecificCategories(UserIntent intent) {
@@ -192,7 +192,7 @@ public class RoutePlannerOrchestrator {
         })
         .flatMap(m -> m)
         .subscribeOn(Schedulers.boundedElastic())
-        .timeout(Duration.ofSeconds(30));
+        .timeout(Duration.ofSeconds(15));
     }
 
     /**

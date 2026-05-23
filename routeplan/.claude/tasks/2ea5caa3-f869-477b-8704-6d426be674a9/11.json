@@ -1,0 +1,8 @@
+{
+  "id": "11",
+  "subject": "Create API service layer",
+  "description": "Create services/api.ts with axios calls to /api/route/plan, /adjust, /compare, /health",
+  "status": "completed",
+  "blocks": [],
+  "blockedBy": []
+}

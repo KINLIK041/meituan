@@ -47,7 +47,7 @@ langchain4j:
       model-name: ${LLM_MODEL:deepseek-v4-flash}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
-      timeout: 60000
+      timeout: 8000
       max-retries: 2
       log-requests: false
       log-responses: false

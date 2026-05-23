@@ -1,0 +1,8 @@
+{
+  "id": "13",
+  "subject": "Create UI components (LiquidGlassCard, InputBar, RouteCard, Timeline)",
+  "description": "Create reusable React Native components for liquid glass style",
+  "status": "completed",
+  "blocks": [],
+  "blockedBy": []
+}

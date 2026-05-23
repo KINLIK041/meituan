@@ -1,0 +1,338 @@
+package com.meituan.route.solver;
+
+import com.meituan.route.model.Constraint;
+import com.meituan.route.model.POI;
+import com.meituan.route.model.Route;
+import com.meituan.route.model.UserIntent;
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
+import org.jgrapht.graph.DefaultWeightedEdge;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.time.Duration;
+import java.time.LocalTime;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+/**
+ * Graph-based route solver using VRPTW-inspired approach.
+ * Builds a weighted POI graph and searches for Pareto-optimal paths.
+ */
+@Component
+public class GraphSearchSolver {
+
+    private static final Logger log = LoggerFactory.getLogger(GraphSearchSolver.class);
+    private static final double AVG_WALK_SPEED_KMH = 5.0;
+    private static final double AVG_DRIVE_SPEED_KMH = 25.0;
+
+    // Cache travel time estimates
+    private final Map<String, Double> travelTimeCache = new ConcurrentHashMap<>();
+
+    /**
+     * Generate multiple route plans from candidate POIs.
+     * Uses beam search with multiple optimization objectives.
+     */
+    public List<Route> generatePlans(List<POI> candidates, List<Constraint> constraints,
+                                     UserIntent intent, int numPlans) {
+        if (candidates.size() < 2) {
+            return handleInsufficientPOIs(candidates, intent);
+        }
+
+        // Build POI graph
+        var graph = buildGraph(candidates, intent);
+
+        // Generate plans with different objectives
+        var goals = List.of("BEST_EXPERIENCE", "FASTEST", "CHEAPEST");
+        var routes = new ArrayList<Route>();
+
+        // Use virtual threads via parallel stream for plan generation
+        routes.addAll(goals.parallelStream()
+                .limit(numPlans)
+                .map(goal -> searchBestRoute(graph, candidates, constraints, intent, goal))
+                .filter(Objects::nonNull)
+                .toList());
+
+        // If we got too many routes, score and keep best ones
+        if (routes.size() > numPlans) {
+            routes.sort((a, b) -> Double.compare(b.score(), a.score()));
+            routes.subList(numPlans, routes.size()).clear();
+        }
+
+        // Add scores and descriptions
+        int idx = 0;
+        for (var r : routes) {
+            String name = switch (r.optimizationGoal()) {
+                case "BEST_EXPERIENCE" -> "体验最优方案";
+                case "FASTEST" -> "最高效方案";
+                case "CHEAPEST" -> "最省钱方案";
+                default -> "方案" + (idx + 1);
+            };
+            routes.set(idx, new Route(r.id(), name, generateDescription(r),
+                    r.segments(), r.totalCost(), r.totalTravelTime(),
+                    r.totalRating(), r.optimizationGoal(),
+                    null, null, computeCompositeScore(r, constraints)));
+            idx++;
+        }
+
+        return routes;
+    }
+
+    /**
+     * Build a directed weighted graph from candidate POIs.
+     * Nodes = POIs, Edge weight = travel time (minutes).
+     */
+    private Graph<POI, DefaultWeightedEdge> buildGraph(List<POI> candidates, UserIntent intent) {
+        var graph = new DefaultDirectedWeightedGraph<POI, DefaultWeightedEdge>(DefaultWeightedEdge.class);
+
+        for (var poi : candidates) {
+            graph.addVertex(poi);
+        }
+
+        String travelMode = intent.travelMode() != null ? intent.travelMode() : "WALKING";
+
+        for (var from : candidates) {
+            for (var to : candidates) {
+                if (from.equals(to)) continue;
+                var edge = graph.addEdge(from, to);
+                if (edge != null) {
+                    double travelTime = estimateTravelTime(from, to, travelMode);
+                    graph.setEdgeWeight(edge, travelTime);
+                }
+            }
+        }
+
+        return graph;
+    }
+
+    /**
+     * Search for best route using a beam-search approach with constraint checking.
+     */
+    private Route searchBestRoute(Graph<POI, DefaultWeightedEdge> graph, List<POI> candidates,
+                                  List<Constraint> constraints, UserIntent intent, String goal) {
+        int maxPOIs = Math.min(6, candidates.size());
+        int beamWidth = Math.min(20, candidates.size() * 2);
+
+        // Beam: list of partial routes, each as (visited List, last POI, arrivalTime, cost, score, travelTime)
+        var beam = new ArrayList<BeamEntry>();
+        for (var poi : candidates) {
+            if (intent.startTime() != null &&
+                    (intent.startTime().isBefore(poi.openTime()) || intent.startTime().plusMinutes(poi.visitDuration()).isAfter(poi.closeTime()))) {
+                continue; // POI not open at start time
+            }
+            double poiScore = computePOIScore(poi, goal);
+            beam.add(new BeamEntry(
+                    new ArrayList<>(List.of(poi)),
+                    poi,
+                    intent.startTime() != null ? intent.startTime() : poi.openTime(),
+                    poi.avgCost(),
+                    poiScore,
+                    0.0
+            ));
+        }
+
+        Route bestRoute = null;
+        double bestScore = -Double.MAX_VALUE;
+
+        // Beam search iterations
+        for (int step = 1; step < maxPOIs; step++) {
+            var nextBeam = new ArrayList<BeamEntry>();
+
+            for (var entry : beam) {
+                // Find candidates not yet visited
+                var visitedIds = entry.visited.stream().map(POI::id).collect(Collectors.toSet());
+                var neighbors = candidates.stream()
+                        .filter(p -> !visitedIds.contains(p.id()))
+                        .toList();
+
+                for (var nextPOI : neighbors) {
+                    double travelTime = getTravelTime(entry.last, nextPOI, intent.travelMode());
+                    var arrivalTime = entry.departureTime.plusMinutes((long) travelTime);
+                    var departureTime = arrivalTime.plusMinutes(nextPOI.visitDuration() + (long) nextPOI.queueTime());
+
+                    // Hard constraint: time window check
+                    if (intent.endTime() != null && departureTime.isAfter(intent.endTime())) continue;
+                    if (arrivalTime.isBefore(nextPOI.openTime()) || departureTime.isAfter(nextPOI.closeTime())) continue;
+
+                    double poiScore = computePOIScore(nextPOI, goal);
+                    double newScore = entry.score + poiScore;
+                    double newCost = entry.totalCost + nextPOI.avgCost();
+                    double newTravelTime = entry.totalTravelTime + travelTime;
+
+                    var newVisited = new ArrayList<>(entry.visited);
+                    newVisited.add(nextPOI);
+
+                    nextBeam.add(new BeamEntry(newVisited, nextPOI, departureTime, newCost, newScore, newTravelTime));
+                }
+            }
+
+            // Prune beam to beam width
+            if (nextBeam.size() > beamWidth) {
+                nextBeam.sort((a, b) -> Double.compare(b.score, a.score));
+                nextBeam = new ArrayList<>(nextBeam.subList(0, beamWidth));
+            }
+
+            // Evaluate top entries as complete routes
+            for (var entry : nextBeam) {
+                double score = entry.score / entry.visited.size(); // normalize by POI count
+                if (score > bestScore && entry.visited.size() >= 2) {
+                    bestScore = score;
+                    bestRoute = buildRoute(entry, intent, goal);
+                }
+            }
+
+            beam = nextBeam;
+        }
+
+        // Fallback: if no route found, create a simple one from top POIs
+        if (bestRoute == null && !candidates.isEmpty()) {
+            var first = candidates.get(0);
+            var fallback = new BeamEntry(
+                    new ArrayList<>(List.of(first)), first,
+                    intent.startTime() != null ? intent.startTime() : first.openTime(),
+                    first.avgCost(), computePOIScore(first, goal), 0.0
+            );
+            if (candidates.size() >= 2) {
+                var second = candidates.get(1);
+                double travelTime = getTravelTime(first, second, intent.travelMode());
+                fallback = new BeamEntry(
+                        new ArrayList<>(List.of(first, second)), second,
+                        fallback.departureTime.plusMinutes((long) travelTime + second.visitDuration()),
+                        first.avgCost() + second.avgCost(),
+                        fallback.score + computePOIScore(second, goal),
+                        travelTime
+                );
+            }
+            bestRoute = buildRoute(fallback, intent, goal);
+        }
+
+        return bestRoute;
+    }
+
+    private Route buildRoute(BeamEntry entry, UserIntent intent, String goal) {
+        var segments = new ArrayList<Route.RouteSegment>();
+        POI prev = null;
+        LocalTime currentTime = intent.startTime() != null ? intent.startTime() : LocalTime.of(9, 0);
+
+        for (var poi : entry.visited) {
+            double travelTime = prev != null ? getTravelTime(prev, poi, intent.travelMode()) : 0.0;
+            if (prev != null) {
+                currentTime = currentTime.plusMinutes((long) travelTime);
+            }
+            // Ensure we don't arrive before opening (wait if needed)
+            if (currentTime.isBefore(poi.openTime())) {
+                currentTime = poi.openTime();
+            }
+            var departure = currentTime.plusMinutes(poi.visitDuration() + (long) poi.queueTime());
+
+            segments.add(new Route.RouteSegment(poi, currentTime, departure, travelTime,
+                    intent.travelMode() != null ? intent.travelMode() : "WALKING"));
+
+            currentTime = departure;
+            prev = poi;
+        }
+
+        double totalCost = entry.visited.stream().mapToDouble(POI::avgCost).sum();
+        double totalRating = entry.visited.stream().mapToDouble(POI::rating).sum();
+        String routeId = "route_" + UUID.randomUUID().toString().substring(0, 8);
+
+        return new Route(routeId, "", "", segments, totalCost,
+                entry.totalTravelTime, totalRating, goal, List.of(), List.of(), entry.score);
+    }
+
+    private double computePOIScore(POI poi, String goal) {
+        return switch (goal) {
+            case "BEST_EXPERIENCE" -> poi.rating() * 20 + poi.popularityScore() * 0.3;
+            case "FASTEST" -> (100 - poi.visitDuration()) * 0.5 + poi.rating() * 5;
+            case "CHEAPEST" -> Math.max(0, 500 - poi.avgCost()) * 0.3 + poi.rating() * 5;
+            default -> poi.rating() * 10 + poi.popularityScore() * 0.2;
+        };
+    }
+
+    private double computeCompositeScore(Route route, List<Constraint> constraints) {
+        double ratingScore = route.segments().stream()
+                .mapToDouble(s -> s.poi().rating()).average().orElse(0) * 20;
+        double costPenalty = constraints.stream()
+                .filter(c -> "budget".equals(c.id()))
+                .findFirst()
+                .map(c -> {
+                    double budget = c.getValueAs(Double.class).orElse(Double.MAX_VALUE);
+                    return Math.max(0, 100 - (route.totalCost() / budget) * 100);
+                })
+                .orElse(50.0);
+        return ratingScore * 0.6 + costPenalty * 0.4;
+    }
+
+    /**
+     * Estimate travel time between two POIs using Haversine distance.
+     */
+    public double estimateTravelTime(POI from, POI to, String travelMode) {
+        String cacheKey = from.id() + "-" + to.id() + "-" + travelMode;
+        return travelTimeCache.computeIfAbsent(cacheKey, k -> {
+            double distance = haversine(from.lat(), from.lng(), to.lat(), to.lng());
+            double speed = "DRIVING".equalsIgnoreCase(travelMode) ? AVG_DRIVE_SPEED_KMH : AVG_WALK_SPEED_KMH;
+            double timeHours = distance / speed;
+            double timeMinutes = timeHours * 60;
+            // Minimum travel time of 2 minutes
+            return Math.max(2, timeMinutes);
+        });
+    }
+
+    public double getTravelTime(POI from, POI to, String travelMode) {
+        return estimateTravelTime(from, to, travelMode);
+    }
+
+    /**
+     * Haversine formula for distance in km.
+     */
+    public static double haversine(double lat1, double lon1, double lat2, double lon2) {
+        final double R = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    private List<Route> handleInsufficientPOIs(List<POI> candidates, UserIntent intent) {
+        if (candidates.isEmpty()) return List.of();
+        var segments = candidates.stream()
+                .map(poi -> new Route.RouteSegment(poi, poi.openTime(),
+                        poi.openTime().plusMinutes(poi.visitDuration()), 0, "WALKING"))
+                .toList();
+        double cost = candidates.stream().mapToDouble(POI::avgCost).sum();
+        double rating = candidates.stream().mapToDouble(POI::rating).sum();
+        return List.of(new Route("route_simple", "简化方案", "候选POI数量不足，生成简化路线",
+                segments, cost, 0, rating, "BEST_EXPERIENCE", List.of(), List.of(), 50));
+    }
+
+    private String generateDescription(Route route) {
+        var names = route.segments().stream().map(s -> s.poi().name()).toList();
+        var times = route.segments().stream()
+                .map(s -> s.arrivalTime().toString().substring(0, 5))
+                .toList();
+        var builder = new StringBuilder();
+        for (int i = 0; i < names.size(); i++) {
+            if (i > 0) builder.append(" → ");
+            builder.append(times.get(i)).append(" ").append(names.get(i));
+        }
+        builder.append(" | 总费用: ¥").append(String.format("%.0f", route.totalCost()));
+        builder.append(" | 评分: ").append(String.format("%.1f",
+                route.totalRating() / route.segments().size()));
+        return builder.toString();
+    }
+
+    // Beam search helper record
+    private record BeamEntry(
+            List<POI> visited,
+            POI last,
+            LocalTime departureTime,
+            double totalCost,
+            double score,
+            double totalTravelTime
+    ) {}
+}

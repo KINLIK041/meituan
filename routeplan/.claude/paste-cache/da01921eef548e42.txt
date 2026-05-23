@@ -1,0 +1,99 @@
+请求体结构示例：
+
+json
+{
+  "query": "吃火锅再看电影",
+  "sessionId": null,
+  "participants": [
+    {"userId": "user1", "start": {"lat": 39.9, "lng": 116.4}},
+    {"userId": "user2", "start": {"lat": 39.95, "lng": 116.45}}
+  ]
+}
+请实现一个 RouteNetworkService 类，使用 async/await 调用后端，包含错误处理和重试逻辑。
+
+7. 数据模型
+使用 Swift 结构体，遵循 Codable, Identifiable：
+
+POI: id, name, category, coordinate, rating, avgPrice, imageUrl, openingHours
+
+RoutePlan: id, title, totalDuration, totalCost, pois: [POI], segments: [RouteSegment], explanation: String
+
+RouteSegment: fromPOI, toPOI, transportMode, duration, distance
+
+Participant: id, name, avatarColor, startCoordinate, currentRouteSegment
+
+SessionState: sessionId, plans, currentPlanIndex, participants
+
+8. 项目结构
+text
+LiquidRoute/
+├── App/
+│   └── LiquidRouteApp.swift
+├── Views/
+│   ├── Home/
+│   │   ├── HomeView.swift
+│   │   ├── MapContainerView.swift
+│   │   └── InputBarView.swift
+│   ├── Planning/
+│   │   ├── RouteLoadingView.swift
+│   │   ├── RouteResultView.swift
+│   │   ├── RouteCardView.swift
+│   │   └── RouteTimelineView.swift
+│   ├── MultiUser/
+│   │   ├── FriendPickerView.swift
+│   │   ├── StartPointPickerView.swift
+│   │   └── MeetingPointAnnotation.swift
+│   └── Common/
+│       ├── LiquidGlassModifier.swift
+│       ├── ShimmerButton.swift
+│       └── GradientBorderTextField.swift
+├── ViewModels/
+│   ├── HomeViewModel.swift
+│   ├── RoutePlanningViewModel.swift
+│   └── MultiUserViewModel.swift
+├── Models/
+│   ├── POI.swift
+│   ├── RoutePlan.swift
+│   ├── Participant.swift
+│   └── SessionState.swift
+├── Services/
+│   ├── RouteNetworkService.swift
+│   ├── LocationService.swift
+│   └── MockDataProvider.swift (用于离线演示)
+├── Utils/
+│   ├── GlassEffects.swift
+│   └── AnimationPresets.swift
+└── Resources/
+    └── Assets.xcassets (液态玻璃纹理图片等)
+9. 关键实现细节
+液态玻璃 Modifier：编写 ViewModifier，组合 .background(.ultraThinMaterial)、clipShape(RoundedRectangle(...))、多层 shadow 和 overlay 描边渐变，使其在任何背景下都有通透感。
+
+地图集成：使用 Map (SwiftUI) + MapCamera，利用 Annotation 展示 POI。多用户路线用 MapPolyline 绘制，不同用户颜色不同。会合点使用自定义 MKAnnotationView 绘制心形。
+
+动画：卡片切换使用 .scrollTransition 视差；加载环使用 TimelineView 驱动旋转渐变。
+
+Mock 模式：内置 MockDataProvider，当后端不可用时直接返回预设的 3 个场景路线，确保线下演示可用。
+
+10. 演示场景预设
+在 Mock 数据中准备以下三个场景：
+
+单人简单路线：“周末下午去三里屯逛街然后吃日料”，假设用户在附近。
+
+情侣不同起点：“两人分别从天通苑和国贸出发，找个中间的地方喝咖啡然后看电影”。
+
+动态调整：先生成路线，再调整“日料换成评分 4.5 以上的火锅”。
+
+11. 工程要求
+代码必须可编译运行（Xcode 15.4+）。
+
+README 含截图、架构图、快速启动说明。
+
+所有文本使用 LocalizedStringKey，预留国际化能力。
+
+使用 SwiftUI Previews 展示关键视图的多种状态。
+
+无任何第三方 UI 库依赖，纯原生实现。
+
+请严格按照以上描述，生成一个完整的 iOS 客户端项目，包含所有界面、业务逻辑、网络对接和 Liquid Glass 视觉实现。代码需结构清晰、注释齐全，可直接在模拟器上展示效果。
+
+text

@@ -1,0 +1,33 @@
+PS D:\web-ai-code\web-ai-project02\meituan>    flutter doctor
+Building flutter tool...
+Running pub upgrade...
+Resolving dependencies... (6:12.8s)
+Got TLS error trying to find package coverage at https://pub.dev.
+Error (69): Unable to 'pub upgrade' flutter tool. Retrying in five seconds... (9 tries left)
+
+等待 0 秒，按 CTRL+C 退出 ...
+Running pub upgrade...
+Resolving dependencies... (5.7s)
+Downloading packages... (2:55.4s)
+Got dependencies.
+Doctor summary (to see all details, run flutter doctor -v):
+[√] Flutter (Channel stable, 3.41.9, on Microsoft Windows [版本 10.0.26200.8246], locale zh-CN)
+[√] Windows Version (11 家庭版 中文版 64-bit, 25H2, 2009)
+[X] Android toolchain - develop for Android devices
+    X Unable to locate Android SDK.
+      Install Android Studio from: https://developer.android.com/studio/index.html
+      On first launch it will assist you in installing the Android SDK components.
+      (or visit https://flutter.dev/to/windows-android-setup for detailed instructions).
+      If the Android SDK has been installed to a custom location, please use
+      `flutter config --android-sdk` to update to that location.
+
+[X] Chrome - develop for the web (Cannot find Chrome executable at .\Google\Chrome\Application\chrome.exe)
+    ! Cannot find Chrome. Try setting CHROME_EXECUTABLE to a Chrome executable.
+[X] Visual Studio - develop Windows apps
+    X Visual Studio not installed; this is necessary to develop Windows apps.
+      Download at https://visualstudio.microsoft.com/downloads/.
+      Please install the "Desktop development with C++" workload, including all of its default components
+[√] Connected device (2 available)
+[√] Network resources
+
+! Doctor found issues in 3 categories.

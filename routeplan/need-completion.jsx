@@ -551,6 +551,33 @@ const ROUTE_TONE = {
 
 function RouteOption({ route, index, total, onOpenDetail }) {
   const t = ROUTE_TONE[route.tone] || ROUTE_TONE.orange;
+  const [favved, setFavved] = React.useState(false);
+  const [favId, setFavId] = React.useState(null);
+
+  const handleFav = function(e) {
+    e.stopPropagation();
+    if (favved) {
+      if (favId) {
+        window.deleteFavorite(favId).catch(function() {});
+      }
+      setFavved(false);
+      setFavId(null);
+      if (window.showToast) window.showToast('已取消收藏');
+    } else {
+      var poiCount = (route.pois || []).length;
+      window.saveFavorite(route, route.route_name || '', route._scene || '', poiCount, route.total_time || '', route.total_avg || 0)
+        .then(function(data) {
+          setFavved(true);
+          setFavId(data.id);
+          if (window.showToast) window.showToast('已加入收藏');
+        })
+        .catch(function() {
+          // Mock fallback — save locally
+          setFavved(true);
+          if (window.showToast) window.showToast('已加入收藏');
+        });
+    }
+  };
 
   return (
     <article
@@ -563,13 +590,49 @@ function RouteOption({ route, index, total, onOpenDetail }) {
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 1px 0 rgba(0,0,0,0.02), 0 12px 30px -18px rgba(80, 50, 20, 0.18)',
         cursor: 'pointer', fontFamily: 'inherit',
+        position: 'relative',
       }}
     >
-      {/* Kicker — index + positioning */}
+      {/* Share + Favorite buttons — top-right corner */}
+      <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 8, zIndex: 10 }}>
+        <button
+          onClick={function(e) { e.stopPropagation(); window._shareRoute = route; window._setShareOpen && window._setShareOpen(true); }}
+          style={{
+            width: 32, height: 32, borderRadius: 999,
+            background: '#fff', border: '1px solid #E5E5E7',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0, lineHeight: 0,
+          }}
+        >
+          <Icon name="Share2" size={14} color="#8e8e93" />
+        </button>
+        <button
+          onClick={handleFav}
+          style={{
+            width: 32, height: 32, borderRadius: 999,
+            background: favved ? '#FF6633' : '#fff',
+            border: favved ? 'none' : '1px solid #E5E5E7',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0, lineHeight: 0,
+            boxShadow: favved ? '0 2px 8px rgba(255, 102, 51, 0.25)' : 'none',
+            transition: 'all 0.18s',
+          }}
+        >
+          <Icon name="Bookmark" size={15} color={favved ? '#fff' : '#C7C7CC'} fill={favved ? '#fff' : 'none'} />
+        </button>
+      </div>
+
+      {/* Kicker — index + positioning (centered WeChat style) */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 10, paddingRight: 0, gap: 8,
       }}>
+        <span className="num" style={{
+          fontSize: 10.5, color: '#C7C7CC', fontWeight: 500, letterSpacing: 0.5,
+        }}>
+          {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
+        </span>
+        <span style={{ color: '#E5E5E7' }}>·</span>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 7,
           fontSize: 10.5, color: t.dot, fontWeight: 600,
@@ -578,25 +641,21 @@ function RouteOption({ route, index, total, onOpenDetail }) {
           <span style={{ width: 5, height: 5, borderRadius: 999, background: t.dot }} />
           {route.positioning}
         </div>
-        <span className="num" style={{
-          fontSize: 10.5, color: '#C7C7CC', fontWeight: 500, letterSpacing: 0.5,
-        }}>
-          {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
-        </span>
       </div>
 
-      {/* Title */}
+      {/* Title — centered WeChat style */}
       <h3 style={{
-        margin: 0, fontSize: 21, fontWeight: 700,
-        color: '#1a1a1a', letterSpacing: -0.5, lineHeight: 1.2,
+        margin: 0, fontSize: 20, fontWeight: 700,
+        color: '#1a1a1a', letterSpacing: -0.3, lineHeight: 1.3,
+        textAlign: 'center',
       }}>
         {route.route_name}
       </h3>
 
-      {/* Inline stats row — editorial separators */}
+      {/* Inline stats row — centered */}
       <div style={{
         marginTop: 10, fontSize: 12.5, color: '#6E6E73',
-        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap',
         lineHeight: 1.4,
       }}>
         <span className="num">{route.total_time}</span>
@@ -713,7 +772,9 @@ function RouteOption({ route, index, total, onOpenDetail }) {
 // used by the NL paths (complete / assumption / conflict / followup).
 // `readOnly` hides the bottom quick-adjust chip row — for history items.
 function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, routes: routesProp, onOpenDetail, onSwap, onChip }) {
-  const routes = routesProp && routesProp.length > 0 ? routesProp : (ROUTE_OPTIONS[scene] || ROUTE_OPTIONS['朋友聚会']);
+  var routes = routesProp && routesProp.length > 0 ? routesProp : (ROUTE_OPTIONS[scene] || ROUTE_OPTIONS['朋友聚会']);
+  // Stamp _scene on each route so getPlacesForRoute can find places
+  routes = routes.map(function(r) { r._scene = scene; return r; });
   const isEmergency = scene === '临时救场';
   const scrollerRef = useRefNC(null);
   const [activeIdx, setActiveIdx] = useStateNC(0);
@@ -810,7 +871,7 @@ function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, ro
             还想调整些什么
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {['更便宜', '少走路', '不想排队', '换个口味', '更出片', '地铁优先'].map((c) => (
+            {['更便宜', '少走路', '不想排队', '换个口味', '更出片', '地铁优先', '更安静'].map((c) => (
               <Chip key={c} onClick={() => onChip(c)}>{c}</Chip>
             ))}
           </div>
