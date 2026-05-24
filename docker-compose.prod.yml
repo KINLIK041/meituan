@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ─── Production deployment ─────────────────────────────────
 # Usage:
 #   1. cp .env.production .env   (fill in your real API keys)
