@@ -26,7 +26,7 @@ public class AppConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AppConfig.class);
 
-    @Value("${langchain4j.open-ai.chat-model.api-key:sk-3f7053c82b7b4089b82ce3c2cec4d627}")
+    @Value("${langchain4j.open-ai.chat-model.api-key}")
     private String deepseekApiKey;
 
     @Value("${langchain4j.open-ai.chat-model.base-url:https://api.deepseek.com/v1}")

@@ -333,7 +333,7 @@ function RouteCard({ onOpenDetail, onNav, onAdjust, onChip }) {
 
           {/* sequence */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            {MOCK_PLACES.map((p, i) =>
+            {(window.MOCK_PLACES || MOCK_PLACES).map((p, i) =>
             <React.Fragment key={p.id}>
                 <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -348,7 +348,7 @@ function RouteCard({ onOpenDetail, onNav, onAdjust, onChip }) {
                 }} className="num">{i + 1}</span>
                   <span style={{ fontSize: 12, color: '#1a1a1a', fontWeight: 500 }}>{p.short}</span>
                 </div>
-                {i < MOCK_PLACES.length - 1 &&
+                {i < (window.MOCK_PLACES || MOCK_PLACES).length - 1 &&
               <Icon name="ArrowRight" size={12} color="#c5beb1" />
               }
               </React.Fragment>
@@ -616,6 +616,7 @@ function ChatScreen({
                       onSwap={null}
                       onChip={null}
                       readOnly={true}
+                      city={city}
                     />
                   </div>
                 );
@@ -699,6 +700,7 @@ function ChatScreen({
               onOpenDetail={onOpenDetail}
               onSwap={onSwap}
               onChip={onChip}
+              city={city}
             />
           </>
         )}

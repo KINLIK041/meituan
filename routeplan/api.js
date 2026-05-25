@@ -291,9 +291,11 @@ async function planWithFallback(query, scene, answers, city, intent) {
     console.warn('Backend API unavailable, using mock data:', e.message);
   }
 
-  // Fallback: use existing mock ROUTE_OPTIONS
+  // Fallback: try dynamic builder first, then existing mock ROUTE_OPTIONS
   const effectiveScene = scene || '朋友聚会';
-  const mockRoutes = (window.ROUTE_OPTIONS && window.ROUTE_OPTIONS[effectiveScene])
+  const dynRoutes = window.buildRoutesForScene && window.buildRoutesForScene(effectiveScene, answers, city);
+  const mockRoutes = dynRoutes
+    || (window.ROUTE_OPTIONS && window.ROUTE_OPTIONS[effectiveScene])
     || window.ROUTE_OPTIONS['朋友聚会'];
   return {
     sessionId: 'mock-' + Date.now(),
@@ -321,9 +323,9 @@ async function adjustWithFallback(sessionId, adjustment, currentRoutes, city) {
     ? currentRoutes.slice()
     : [];
   if (routes.length === 0) {
-    // No current routes — fall back to ROUTE_OPTIONS
-    var allScenes = window.ROUTE_OPTIONS || {};
-    routes = allScenes['朋友聚会'] || [];
+    // No current routes — try dynamic builder first
+    var dynRoutes = window.buildRoutesForScene && window.buildRoutesForScene('朋友聚会', {}, city);
+    routes = dynRoutes || (window.ROUTE_OPTIONS && window.ROUTE_OPTIONS['朋友聚会']) || [];
   }
 
   var label = (adjustment || '').trim();

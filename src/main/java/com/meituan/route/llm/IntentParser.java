@@ -279,6 +279,22 @@ public class IntentParser {
             return parseWithRules(originalQuery, sessionId);
         }
 
+        // When district is a landmark name, map to real district and add landmark to keywords
+        if (district != null && LANDMARK_NAMES.contains(district)) {
+            if (!keywords.contains(district)) keywords.add(district);
+            district = LANDMARK_TO_DISTRICT.getOrDefault(district, district);
+        }
+
+        // When a keyword IS a landmark name but district is null, derive district from keyword
+        if (district == null && keywords != null) {
+            for (var kw : keywords) {
+                if (LANDMARK_NAMES.contains(kw)) {
+                    district = LANDMARK_TO_DISTRICT.get(kw);
+                    break;
+                }
+            }
+        }
+
         return new UserIntent(originalQuery, city, district, categories, cuisine,
                 startTime, endTime, budget, partySize, minRating,
                 maxQueue, travelMode, goal, specialRequest, keywords, sessionId);
@@ -301,12 +317,36 @@ public class IntentParser {
         var goal = detectGoal(query, categories);
         var keywords = extractKeywords(query);
 
+        // When district is a landmark name, map to real district and add landmark to keywords
+        if (district != null && LANDMARK_NAMES.contains(district)) {
+            if (!keywords.contains(district)) keywords.add(district);
+            district = LANDMARK_TO_DISTRICT.getOrDefault(district, district);
+        }
+
         return new UserIntent(
                 query, city, district, categories, cuisine,
                 times[0], times[1], budget, 2, minRating,
                 maxQueue, travelMode, goal, null, keywords, sessionId
         );
     }
+
+    // Landmark/POI names that appear in DISTRICT_MAP but aren't real district names
+    private static final Set<String> LANDMARK_NAMES = Set.of(
+            "武康路", "外滩", "陆家嘴", "新天地", "南京路", "静安寺",
+            "田子坊", "豫园", "虹桥", "人民广场", "三里屯", "国贸",
+            "王府井", "前门"
+    );
+
+    // Map landmark names to their actual enclosing districts for geographic filtering
+    private static final Map<String, String> LANDMARK_TO_DISTRICT = Map.ofEntries(
+            Map.entry("武康路", "徐汇区"), Map.entry("外滩", "黄浦区"),
+            Map.entry("新天地", "黄浦区"), Map.entry("田子坊", "黄浦区"),
+            Map.entry("豫园", "黄浦区"), Map.entry("人民广场", "黄浦区"),
+            Map.entry("南京路", "黄浦区"), Map.entry("静安寺", "静安区"),
+            Map.entry("陆家嘴", "浦东新区"), Map.entry("虹桥", "闵行区"),
+            Map.entry("三里屯", "朝阳区"), Map.entry("国贸", "朝阳区"),
+            Map.entry("王府井", "东城区"), Map.entry("前门", "东城区")
+    );
 
     private String detectCity(String query) {
         if (query.contains("上海") || query.contains("外滩") || query.contains("陆家嘴")

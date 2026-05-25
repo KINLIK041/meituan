@@ -66,6 +66,9 @@ function App() {
   const [toast, setToast] = useStateApp(null);
   const [city, setCity] = useStateApp('北京');
 
+  // Sync city to global window for cross-component access (e.g. route builder)
+  useEffectApp(() => { window._currentCity = city; }, [city]);
+
   // Save current conversation to history (called when user starts a new one).
   // Records at the conversation level, not per-route.
   const recordRef = React.useRef({ suppress: false });

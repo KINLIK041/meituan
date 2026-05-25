@@ -66,7 +66,10 @@ public class RoutePlannerOrchestrator {
     public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity, UserIntent preParsedIntent) {
         log.info("Orchestrator: starting route plan for '{}', city={}, preParsedIntent={}", query, requestCity, preParsedIntent != null);
 
-        var effectiveCity = (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
+        // Use pre-parsed intent city > requestCity > default 北京 for speculative discovery
+        final var effectiveCity = (preParsedIntent != null && preParsedIntent.city() != null && !preParsedIntent.city().isBlank())
+                ? preParsedIntent.city()
+                : (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
 
         var broadIntent = DiscoveryAgent.broadIntent(effectiveCity);
         var speculativeDiscovery = discoveryAgent.discover(broadIntent)
@@ -96,13 +99,17 @@ public class RoutePlannerOrchestrator {
                             : rawIntent;
                     var city = intent.city() != null ? intent.city() : "北京";
 
-                    // If speculative city matches intent city, reuse; otherwise re-discover
-                    var discoveryMono = effectiveCity.equals(city)
-                            ? Mono.just(speculative)
-                            : discoveryAgent.discover(intent).subscribeOn(Schedulers.boundedElastic());
+                    // Re-discover when: city mismatch, or intent has district/keywords (broad speculative lacks those filters)
+                    var hasSpecificFilters = (intent.district() != null && !intent.district().isBlank())
+                            || (intent.keywords() != null && !intent.keywords().isEmpty());
+                    var needsRediscovery = !effectiveCity.equals(city) || hasSpecificFilters;
+                    var discoveryMono = needsRediscovery
+                            ? discoveryAgent.discover(intent).subscribeOn(Schedulers.boundedElastic())
+                            : Mono.just(speculative);
 
                     return discoveryMono.flatMap(discovery -> {
-                        var effectiveDiscovery = effectiveCity.equals(city) && hasSpecificCategories(intent)
+                        // Only filter when reusing broad speculative results; re-discovered results already have filters applied
+                        var effectiveDiscovery = (!needsRediscovery && hasSpecificCategories(intent))
                                 ? discoveryAgent.filterForIntent(discovery, intent)
                                 : discovery;
 
@@ -182,9 +189,14 @@ public class RoutePlannerOrchestrator {
 
             // Process adjustment through conversation agent
             var convResult = conversationAgent.process(adjustment, sessionId);
-            var newIntent = (requestCity != null && !requestCity.isBlank())
+            var parsedIntent = (requestCity != null && !requestCity.isBlank())
                     ? convResult.intent().withCity(requestCity)
                     : convResult.intent();
+
+            // Merge missing context from previous intent (adjustment queries like "换一家" lack city/district)
+            final var newIntent = (convResult.previousIntent() != null)
+                    ? mergeIntentContext(parsedIntent, convResult.previousIntent())
+                    : parsedIntent;
 
             // Re-discover with new intent
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
@@ -242,6 +254,27 @@ public class RoutePlannerOrchestrator {
 
             return new CompareResponse(sessionId, allRoutes, explanation.comparisonHtml());
         });
+    }
+
+    private UserIntent mergeIntentContext(UserIntent newIntent, UserIntent previous) {
+        var city = (newIntent.city() == null || newIntent.city().isBlank() || newIntent.city().equals("北京"))
+                ? previous.city()
+                : newIntent.city();
+        var district = newIntent.district() != null ? newIntent.district() : previous.district();
+        var keywords = new java.util.ArrayList<>(newIntent.keywords());
+        if (previous.keywords() != null) {
+            for (var kw : previous.keywords()) {
+                if (!keywords.contains(kw)) keywords.add(kw);
+            }
+        }
+        return new com.meituan.route.model.UserIntent(
+                newIntent.rawQuery(), city, district,
+                newIntent.preferredCategories(), newIntent.cuisinePreference(),
+                newIntent.startTime(), newIntent.endTime(), newIntent.budget(),
+                newIntent.partySize(), newIntent.minRating(), newIntent.maxQueueMinutes(),
+                newIntent.travelMode(), newIntent.optimizationGoal(),
+                newIntent.specialRequest(), keywords, newIntent.sessionId()
+        );
     }
 
     // Response types

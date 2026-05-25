@@ -44,10 +44,17 @@ public class DiscoveryAgent {
             categories = List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT", "CULTURE");
         }
 
-        // Parallel search across categories using virtual threads
-        var poiFluxes = categories.stream()
+        // Parallel search across categories
+        var poiFluxes = new ArrayList<>(categories.stream()
                 .map(cat -> dataService.searchByCategory(city, intent.district(), cat))
-                .toList();
+                .toList());
+
+        // Keyword-based search for named POIs
+        if (intent.keywords() != null && !intent.keywords().isEmpty()) {
+            for (var kw : intent.keywords()) {
+                poiFluxes.add(dataService.searchByKeyword(city, intent.district(), kw));
+            }
+        }
 
         var allPOIs = Flux.merge(poiFluxes)
                 .distinct(POI::id)
@@ -127,25 +134,54 @@ public class DiscoveryAgent {
      */
     public DiscoveryResult filterForIntent(DiscoveryResult speculative, UserIntent intent) {
         var targetCats = intent.preferredCategories();
-        if (targetCats == null || targetCats.isEmpty()) {
-            return speculative; // broad search already covers all
+        var hasCats = targetCats != null && !targetCats.isEmpty();
+        var hasDistrict = intent.district() != null && !intent.district().isBlank();
+        var hasKeywords = intent.keywords() != null && !intent.keywords().isEmpty();
+
+        if (!hasCats && !hasDistrict && !hasKeywords) {
+            return speculative;
         }
 
-        var targetSet = new java.util.HashSet<>(targetCats.stream()
-                .map(String::toUpperCase).toList());
+        var stream = speculative.candidates().stream();
 
-        var filtered = speculative.candidates().stream()
-                .filter(poi -> {
-                    var cat = poi.category() != null ? poi.category().toUpperCase() : "";
-                    return targetSet.contains(cat) || targetSet.stream().anyMatch(cat::contains);
-                })
+        if (hasCats) {
+            var targetSet = new java.util.HashSet<>(targetCats.stream()
+                    .map(String::toUpperCase).toList());
+            stream = stream.filter(poi -> {
+                var cat = poi.category() != null ? poi.category().toUpperCase() : "";
+                return targetSet.contains(cat) || targetSet.stream().anyMatch(cat::contains);
+            });
+        }
+
+        if (hasDistrict) {
+            stream = stream.filter(poi -> {
+                if (poi.district().equals(intent.district())) return true;
+                if (poi.name().contains(intent.district())) return true;
+                if (poi.district().contains(intent.district()) || intent.district().contains(poi.district())) return true;
+                if (poi.address() != null && poi.address().contains(intent.district())) return true;
+                return false;
+            });
+        }
+
+        if (hasKeywords) {
+            stream = stream.filter(poi -> {
+                for (var kw : intent.keywords()) {
+                    if (poi.name().contains(kw)) return true;
+                    if (poi.tags().stream().anyMatch(t -> t.contains(kw))) return true;
+                    if (poi.description().contains(kw)) return true;
+                }
+                return false;
+            });
+        }
+
+        var filtered = stream
                 .sorted(java.util.Comparator.<POI, Double>comparing(p -> -p.rating())
                         .thenComparing(p -> -p.popularityScore()))
                 .limit(20)
                 .toList();
 
-        log.info("DiscoveryAgent filtered speculative {} POIs → {} POIs for intent categories",
-                speculative.candidates().size(), filtered.size());
+        log.info("DiscoveryAgent filtered speculative {} POIs → {} POIs (cats={}, district={}, keywords={})",
+                speculative.candidates().size(), filtered.size(), hasCats, hasDistrict, hasKeywords);
         return new DiscoveryResult(filtered, categorizePOIs(filtered), intent);
     }
 

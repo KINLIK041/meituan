@@ -771,8 +771,12 @@ function RouteOption({ route, index, total, onOpenDetail }) {
 // `summaryNode` lets the caller override the default ParsingSummary banner —
 // used by the NL paths (complete / assumption / conflict / followup).
 // `readOnly` hides the bottom quick-adjust chip row — for history items.
-function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, routes: routesProp, onOpenDetail, onSwap, onChip }) {
-  var routes = routesProp && routesProp.length > 0 ? routesProp : (ROUTE_OPTIONS[scene] || ROUTE_OPTIONS['朋友聚会']);
+function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, routes: routesProp, onOpenDetail, onSwap, onChip, city }) {
+  var routes = routesProp && routesProp.length > 0
+    ? routesProp
+    : (window.buildRoutesForScene && window.buildRoutesForScene(scene, answers, city || window._currentCity))
+    || ROUTE_OPTIONS[scene]
+    || ROUTE_OPTIONS['朋友聚会'];
   // Stamp _scene on each route so getPlacesForRoute can find places
   routes = routes.map(function(r) { r._scene = scene; return r; });
   const isEmergency = scene === '临时救场';
