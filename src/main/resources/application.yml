@@ -43,7 +43,7 @@ server:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${DEEPSEEK_API_KEY}
+      api-key: ${DEEPSEEK_API_KEY:sk-73017070d7d04684a7134c27d3f02146}
       model-name: ${LLM_MODEL:deepseek-v4-flash}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
@@ -52,7 +52,7 @@ langchain4j:
       log-requests: false
       log-responses: false
     streaming-chat-model:
-      api-key: ${DEEPSEEK_API_KEY}
+      api-key: ${DEEPSEEK_API_KEY:sk-73017070d7d04684a7134c27d3f02146}
       model-name: ${LLM_MODEL:deepseek-v4-flash}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
@@ -71,7 +71,8 @@ meituan:
 # ──────────────────────────────────────────────
 gaode:
   api:
-    key: ${GAODE_API_KEY}
+    key: ${GAODE_API_KEY:}
+    security-key: ${GAODE_SECURITY_KEY:}
     base-url: https://restapi.amap.com
 
 # Actuator endpoints

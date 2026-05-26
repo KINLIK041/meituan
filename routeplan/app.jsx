@@ -229,6 +229,15 @@ function App() {
     // ── Unified smart-plan call (single HTTP round-trip) ──
     var smartResult = await window.smartPlan(trimmed, sid, city);
 
+    // Auto-sync city tag when LLM detects a different city from the query
+    if (smartResult && smartResult.intent && smartResult.intent.city &&
+        smartResult.intent.city !== city) {
+      var knownCities = ['北京', '上海'];
+      if (knownCities.indexOf(smartResult.intent.city) !== -1) {
+        setCity(smartResult.intent.city);
+      }
+    }
+
     if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
       // Routes returned directly — no second API call needed
       var analysis = mapApiToNL(smartResult, trimmed);

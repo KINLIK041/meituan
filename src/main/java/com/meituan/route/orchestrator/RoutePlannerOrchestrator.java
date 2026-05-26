@@ -79,8 +79,12 @@ public class RoutePlannerOrchestrator {
         var llmMono = preParsedIntent != null
                 ? Mono.fromCallable(() -> {
                     var sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : sessionManager.createSession();
-                    var intent = (requestCity != null && !requestCity.isBlank())
-                            ? preParsedIntent.withCity(requestCity) : preParsedIntent;
+                    // Prefer pre-parsed intent's own city; requestCity is fallback
+                    var ppCity = preParsedIntent.city();
+                    var resolvedPpCity = (ppCity != null && !ppCity.isBlank())
+                            ? ppCity
+                            : (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
+                    var intent = resolvedPpCity.equals(ppCity) ? preParsedIntent : preParsedIntent.withCity(resolvedPpCity);
                     log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
                     return new ConversationAgent.ConversationResult(sid, intent, null, null);
                 })
@@ -94,10 +98,13 @@ public class RoutePlannerOrchestrator {
                     var actualSessionId = convResult.sessionId();
 
                     var rawIntent = convResult.intent();
-                    var intent = (requestCity != null && !requestCity.isBlank())
-                            ? rawIntent.withCity(requestCity)
-                            : rawIntent;
-                    var city = intent.city() != null ? intent.city() : "北京";
+                    // Prefer LLM-parsed city when it's specific; only use requestCity as fallback
+                    var llmCity = rawIntent.city();
+                    var resolvedCity = (llmCity != null && !llmCity.isBlank())
+                            ? llmCity
+                            : (requestCity != null && !requestCity.isBlank()) ? requestCity : "北京";
+                    var intent = resolvedCity.equals(rawIntent.city()) ? rawIntent : rawIntent.withCity(resolvedCity);
+                    var city = resolvedCity;
 
                     // Re-discover when: city mismatch, or intent has district/keywords (broad speculative lacks those filters)
                     var hasSpecificFilters = (intent.district() != null && !intent.district().isBlank())
