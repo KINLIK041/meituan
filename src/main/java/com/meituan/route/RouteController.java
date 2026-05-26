@@ -46,7 +46,7 @@ public class RouteController {
     @PostMapping(value = "/analyze", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<IntentAnalysisResult> analyze(@RequestBody AnalyzeRequest request) {
         return Mono.fromCallable(() ->
-                intentParser.analyzeWithCompleteness(request.query(), request.sessionId()));
+                intentParser.analyzeWithCompleteness(request.query(), request.sessionId(), request.city()));
     }
 
     /**
@@ -60,7 +60,7 @@ public class RouteController {
     @PostMapping(value = "/smart-plan", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Map<String, Object>> smartPlan(@RequestBody AnalyzeRequest request) {
         return Mono.fromCallable(() ->
-                intentParser.analyzeWithCompleteness(request.query(), request.sessionId()))
+                intentParser.analyzeWithCompleteness(request.query(), request.sessionId(), request.city()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(analysis -> {
                     var stage = analysis.stage();

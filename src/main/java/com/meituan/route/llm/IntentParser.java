@@ -108,7 +108,19 @@ public class IntentParser {
      * and generated followup questions.
      */
     public IntentAnalysisResult analyzeWithCompleteness(String query, String sessionId) {
+        return analyzeWithCompleteness(query, sessionId, null);
+    }
+
+    /**
+     * Analyze query with a city hint. When the query doesn't mention a city,
+     * the hint is used as default instead of returning null.
+     */
+    public IntentAnalysisResult analyzeWithCompleteness(String query, String sessionId, String cityHint) {
         var intent = parse(query, sessionId);
+        // When LLM doesn't detect a city from the query, use the user's selected city
+        if ((intent.city() == null || intent.city().isBlank()) && cityHint != null && !cityHint.isBlank()) {
+            intent = intent.withCity(cityHint);
+        }
         return assessCompleteness(intent);
     }
 
@@ -389,7 +401,7 @@ public class IntentParser {
                 || query.contains("闵行") || query.contains("宝山") || query.contains("嘉定")
                 || query.contains("松江") || query.contains("奉贤") || query.contains("青浦")
                 || query.contains("崇明") || query.contains("黄浦")) return "上海";
-        return "北京"; // default
+        return null; // no city detected — let fallback chain use caller-provided city
     }
 
     private String detectDistrict(String query) {
