@@ -82,6 +82,10 @@ public class IntentParser {
      * Parse a natural language query into a structured UserIntent.
      */
     public UserIntent parse(String query, String sessionId) {
+        return parse(query, sessionId, null);
+    }
+
+    private UserIntent parse(String query, String sessionId, String cityHint) {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("Query cannot be empty");
         }
@@ -90,7 +94,7 @@ public class IntentParser {
         if (llmAvailable) {
             try {
                 log.info(">>> Using LLM to parse query: {}", query.substring(0, Math.min(60, query.length())));
-                return parseWithLLM(query, sessionId);
+                return parseWithLLM(query, sessionId, cityHint);
             } catch (Exception e) {
                 log.warn("LLM intent parsing failed, falling back to rules: {}", e.getMessage());
             }
@@ -116,7 +120,7 @@ public class IntentParser {
      * the hint is used as default instead of returning null.
      */
     public IntentAnalysisResult analyzeWithCompleteness(String query, String sessionId, String cityHint) {
-        var intent = parse(query, sessionId);
+        var intent = parse(query, sessionId, cityHint);
         // When LLM doesn't detect a city from the query, use the user's selected city
         if ((intent.city() == null || intent.city().isBlank()) && cityHint != null && !cityHint.isBlank()) {
             intent = intent.withCity(cityHint);
@@ -245,13 +249,16 @@ public class IntentParser {
      * Tier 1: LLM-based parsing via LangChain4j (DeepSeek).
      * Uses a structured prompt to extract intent fields as JSON.
      */
-    private UserIntent parseWithLLM(String query, String sessionId) {
-        var prompt = """
+    private UserIntent parseWithLLM(String query, String sessionId, String cityHint) {
+        var cityContext = (cityHint != null && !cityHint.isBlank())
+                ? "当前用户所在城市: " + cityHint + "。若查询未明确提到城市，city字段使用此城市。\n"
+                : "";
+        var prompt = (cityContext + """
 从查询提取JSON（只返回JSON）：
 查询: "%s"
 字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认14:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
 示例: {"city":"北京","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
-""".formatted(query);
+""".formatted(query));
 
         var json = chatModel.chat(prompt);
 
@@ -332,7 +339,7 @@ public class IntentParser {
 
         // Rule-based city detection as safety net: when LLM misses "上海" in query
         var ruleCity = detectCity(originalQuery);
-        if (!ruleCity.equals(city)) {
+        if (ruleCity != null && !ruleCity.equals(city)) {
             log.info("IntentParser: city corrected by rule from '{}' → '{}'", city, ruleCity);
             city = ruleCity;
         }
