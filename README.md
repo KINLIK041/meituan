@@ -217,7 +217,7 @@ spring:
 - **核心逻辑**:
   - 按品类并行搜索 POI（`DataService.searchByCategory()`）
   - 硬约束过滤 → 按评分+热度排序 → Top 20
-  - mock 模式：内置 50+ POI（北京 30+，上海 20 个）
+  - mock 模式：内置 400 POI（200 北京 + 200 上海），每个 POI 4 张图片
   - dianping 模式：美团点评 API → 高德降级
 - **输出**: `DiscoveryResult` → 传给 Agent 3
 
@@ -273,7 +273,7 @@ RoutePlannerOrchestrator.java ──  Mono.zip(
          │
          └──→ DiscoveryAgent.discover(broadIntent)
               DataService.searchByCategory/mock
-              产出: 50+ POI → filterForIntent → 20 候选
+              产出: 400 POI → filterForIntent → 20 候选
                      │
                      ▼
               PlanningAgent.plan(discovery, intent)
@@ -330,6 +330,13 @@ RoutePlannerOrchestrator.java ──  Mono.zip(
 meituan/
 ├── README.md                              # 本文件
 ├── pom.xml                                # Maven 配置
+├── Dockerfile                             # Docker 镜像构建
+├── docker-compose.yml                     # 本地 Docker 编排
+├── docker-compose.prod.yml                # 生产环境编排（Nginx + Java + Postgres）
+├── mvnw / mvnw.cmd                        # Maven Wrapper（无需安装 Maven）
+├── download-images.js                     # 百度图片爬虫（4 张/POI）
+├── gen-photo-checklist.js                 # 生成 photo-checklist.md
+├── .env.example                           # 环境变量模板
 │
 ├── src/main/java/com/meituan/route/
 │   ├── RouteApplication.java              # Spring Boot 启动入口
@@ -357,7 +364,7 @@ meituan/
 │   │
 │   ├── data/
 │   │   ├── DataService.java               # 数据服务接口
-│   │   ├── MockDataService.java           # Mock 数据 (默认 profile, 50+ POI)
+│   │   ├── MockDataService.java           # Mock 数据 (默认 profile, 400 POI)
 │   │   ├── DianpingApiDataService.java    # 美团点评实时 API (@Profile("dianping"))
 │   │   └── GaodeGeoService.java           # 高德地理编码+POI搜索
 │   │
@@ -404,21 +411,30 @@ meituan/
 │   ├── api.js                             # API 调用层
 │   ├── chat-screen.jsx                    # 对话主界面
 │   ├── components.jsx                     # 通用 UI (Icon, Chip, StatusPill 等)
-│   ├── route-detail.jsx                   # 路线详情页
+│   ├── route-detail.jsx                   # 路线详情页（含 4 图展示）
 │   ├── nl-flow.jsx                        # NL 分支交互 + FollowupCard + ConflictCard
 │   ├── need-completion.jsx                # 场景路径需求补全 + RouteOptionsCard
 │   ├── history-panel.jsx                  # 历史记录面板
 │   ├── favorites-panel.jsx                # 收藏面板
 │   ├── share-panel.jsx                    # 分享面板
-│   └── images/stores/                     # 店铺图片
+│   ├── images/stores/                     # 店铺图片 (photo-001-1.jpg ~ photo-400-4.jpg)
+│   └── mock-data/                         # 前端 Mock 数据源（JSX）
+│       ├── beijing-pois.jsx               # 200 北京 POI
+│       ├── shanghai-pois.jsx              # 200 上海 POI
+│       ├── index.jsx                      # 数据入口
+│       ├── route-builder.jsx              # 通用路线组装
+│       └── photo-checklist.md             # 图片清单（400 POI）
 │
-├── screenshots/                           # 项目截图 (5 张已有)
+├── screenshots/                           # 项目截图 (6 张)
 │   ├── home.png
 │   ├── chat.png
 │   ├── need-completion.png
 │   ├── route-cards.png
 │   ├── route-detail.png
 │   └── chip-adjust.png
+│
+├── nginx/
+│   └── nginx.conf                         # Nginx 反向代理配置
 │
 └── image/                                 # 录屏素材 (mp4)
 ```
@@ -429,35 +445,43 @@ meituan/
 
 ### 环境要求
 
-- JDK 21+
-- Maven 3.9+
-- PostgreSQL 15+（可选，mock profile 使用内存数据）
-- DeepSeek API Key（可选，内置 Key；无 Key 时降级为规则解析）
+| 方式 | 需要 |
+|------|------|
+| **Docker Compose（推荐）** | Docker + Docker Compose |
+| 本地开发 | JDK 21+、Maven 3.9+（或用 `./mvnw`）、PostgreSQL 15+（可选） |
 
-### 启动后端
+**必需环境变量**：`DEEPSEEK_API_KEY`（DeepSeek API Key）
 
-```bash
-# 默认 mock profile（无需数据库，内置 Mock POI 数据，LLM 可用）
-mvn spring-boot:run
-
-# Dianping 实时数据 + DeepSeek LLM
-mvn spring-boot:run "-Dspring-boot.run.profiles=dianping"
-```
-
-后端启动后监听 `http://localhost:8080`
-
-### 启动前端
-
-直接用浏览器打开 `routeplan/index.html`。
-
-或本地静态服务器：
+### Docker Compose 部署（生产环境）
 
 ```bash
-cd routeplan
-npx serve .        # Node.js
-# 或
-python -m http.server 3000
+# 1. 设置 API Key
+export DEEPSEEK_API_KEY=sk-your-deepseek-key
+
+# 2. 构建并启动（含 Nginx + PostgreSQL）
+sudo -E docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. 验证
+curl http://localhost/api/route/health
 ```
+
+访问 `http://<服务器IP>`，Nginx 代理前端 + 后端 API。
+
+### 本地开发
+
+```bash
+# 1. 设置 API Key
+export DEEPSEEK_API_KEY=sk-your-deepseek-key
+
+# 2. 默认 mock profile（无需数据库，内置 400 POI 数据）
+./mvnw spring-boot:run         # Linux/Mac
+mvnw.cmd spring-boot:run       # Windows
+
+# 3. Dianping 实时数据模式
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dianping
+```
+
+后端启动后监听 `http://localhost:8080`，直接用浏览器打开 `routeplan/index.html`。
 
 ### API 端点
 
@@ -590,21 +614,21 @@ curl -X POST http://localhost:8080/api/route/adjust \
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
-| `DEEPSEEK_API_KEY` | (内置) | DeepSeek API Key |
+| `DEEPSEEK_API_KEY` | **必需** | DeepSeek API Key |
 | `LLM_MODEL` | `deepseek-v4-flash` | 模型名称 |
 | `LLM_BASE_URL` | `https://api.deepseek.com/v1` | LLM API 地址 |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5433/liquidroute` | PostgreSQL |
 | `SPRING_DATASOURCE_USERNAME` | `liquidroute` | 数据库用户名 |
 | `SPRING_DATASOURCE_PASSWORD` | `liquidroute` | 数据库密码 |
-| `MEITUAN_API_TOKEN` | (内置) | 美团开放平台 Token |
-| `GAODE_API_KEY` | (内置) | 高德地图 Web API Key |
+| `MEITUAN_API_TOKEN` | — | 美团开放平台 Token（dianping profile） |
+| `GAODE_API_KEY` | — | 高德地图 Web API Key（dianping profile） |
 
 ### Profile 说明
 
 | Profile | 数据源 | LLM | 数据库 | 适用场景 |
 |---------|--------|-----|--------|---------|
-| `mock`（默认） | 内置 50+ POI | DeepSeek 可用 | 不需要 | 开发调试、Demo |
-| `dianping` | 美团点评实时 API | DeepSeek 可用 | 需要 | 生产环境 |
+| `mock`（默认） | 内置 400 POI（200 北京 + 200 上海） | 需 `DEEPSEEK_API_KEY` | 不需要 | 开发调试、Demo |
+| `dianping` | 美团点评实时 API | 需 `DEEPSEEK_API_KEY` | 需要 | 生产环境 |
 
 ---
 
