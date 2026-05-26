@@ -53,10 +53,22 @@ public class IntentParser {
             Map.entry("海淀", "海淀"), Map.entry("朝阳", "朝阳"),
             Map.entry("外滩", "外滩"), Map.entry("陆家嘴", "陆家嘴"),
             Map.entry("新天地", "新天地"), Map.entry("南京路", "南京路"),
-            Map.entry("静安寺", "静安寺"), Map.entry("浦东", "浦东"),
-            Map.entry("武康路", "武康路"), Map.entry("徐汇", "徐汇"),
+            Map.entry("静安", "静安区"), Map.entry("静安寺", "静安区"),
+            Map.entry("徐汇", "徐汇区"), Map.entry("浦东", "浦东新区"),
+            Map.entry("武康路", "武康路"), Map.entry("黄浦", "黄浦区"),
             Map.entry("田子坊", "田子坊"), Map.entry("豫园", "豫园"),
-            Map.entry("虹桥", "虹桥"), Map.entry("人民广场", "人民广场")
+            Map.entry("虹桥", "虹桥"), Map.entry("人民广场", "人民广场"),
+            Map.entry("长宁", "长宁区"), Map.entry("普陀", "普陀区"),
+            Map.entry("杨浦", "杨浦区"), Map.entry("闵行", "闵行区"),
+            Map.entry("宝山", "宝山区"), Map.entry("嘉定", "嘉定区"),
+            Map.entry("松江", "松江区"), Map.entry("奉贤", "奉贤区"),
+            Map.entry("青浦", "青浦区"), Map.entry("崇明", "崇明区"),
+            Map.entry("丰台", "丰台区"), Map.entry("通州", "通州区"),
+            Map.entry("大兴", "大兴区"), Map.entry("昌平", "昌平区"),
+            Map.entry("石景山", "石景山区"), Map.entry("顺义", "顺义区"),
+            Map.entry("房山", "房山区"), Map.entry("门头沟", "门头沟区"),
+            Map.entry("平谷", "平谷区"), Map.entry("密云", "密云区"),
+            Map.entry("怀柔", "怀柔区"), Map.entry("延庆", "延庆区")
     );
 
     public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env) {
@@ -115,12 +127,15 @@ public class IntentParser {
 
         var missing = new java.util.ArrayList<String>();
         if (!hasCategories) missing.add("categories");
-        if (!hasDistrict) missing.add("district");
+        // District is optional — only ask when user gave no categories either
+        if (!hasDistrict && !hasCategories) missing.add("district");
         if (!hasBudget) missing.add("budget");
         if (!hasKeywords && !hasSpecial && !hasCuisine) missing.add("preferences");
 
         int filled = (hasCategories ? 1 : 0) + (hasDistrict ? 1 : 0)
                 + (hasBudget ? 1 : 0) + (hasKeywords || hasSpecial || hasCuisine ? 1 : 0);
+        // When categories are present but district is missing, still generate routes (city-wide search)
+        if (hasCategories && !hasDistrict) filled = Math.max(filled, 2);
 
         // Detect conflicts: high demand + low budget
         boolean highDemand = (hasKeywords && intent.keywords().stream().anyMatch(
@@ -295,6 +310,14 @@ public class IntentParser {
             }
         }
 
+        // Rule-based district fallback: when LLM misses district, detect from original query
+        if (district == null) {
+            district = detectDistrict(originalQuery);
+            if (district != null) {
+                log.info("IntentParser: district detected by rule fallback: '{}'", district);
+            }
+        }
+
         // Rule-based city detection as safety net: when LLM misses "上海" in query
         var ruleCity = detectCity(originalQuery);
         if (!ruleCity.equals(city)) {
@@ -350,17 +373,22 @@ public class IntentParser {
             Map.entry("新天地", "黄浦区"), Map.entry("田子坊", "黄浦区"),
             Map.entry("豫园", "黄浦区"), Map.entry("人民广场", "黄浦区"),
             Map.entry("南京路", "黄浦区"), Map.entry("静安寺", "静安区"),
-            Map.entry("陆家嘴", "浦东新区"), Map.entry("虹桥", "闵行区"),
-            Map.entry("三里屯", "朝阳区"), Map.entry("国贸", "朝阳区"),
-            Map.entry("王府井", "东城区"), Map.entry("前门", "东城区")
+            Map.entry("静安", "静安区"), Map.entry("陆家嘴", "浦东新区"),
+            Map.entry("虹桥", "闵行区"), Map.entry("三里屯", "朝阳区"),
+            Map.entry("国贸", "朝阳区"), Map.entry("王府井", "东城区"),
+            Map.entry("前门", "东城区")
     );
 
     private String detectCity(String query) {
         if (query.contains("上海") || query.contains("外滩") || query.contains("陆家嘴")
                 || query.contains("新天地") || query.contains("浦东")
-                || query.contains("武康路") || query.contains("静安寺") || query.contains("南京路")
-                || query.contains("徐汇") || query.contains("田子坊") || query.contains("豫园")
-                || query.contains("虹桥")) return "上海";
+                || query.contains("武康路") || query.contains("静安寺") || query.contains("静安")
+                || query.contains("南京路") || query.contains("徐汇") || query.contains("田子坊")
+                || query.contains("豫园") || query.contains("虹桥")
+                || query.contains("长宁") || query.contains("普陀") || query.contains("杨浦")
+                || query.contains("闵行") || query.contains("宝山") || query.contains("嘉定")
+                || query.contains("松江") || query.contains("奉贤") || query.contains("青浦")
+                || query.contains("崇明") || query.contains("黄浦")) return "上海";
         return "北京"; // default
     }
 

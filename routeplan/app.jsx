@@ -229,13 +229,11 @@ function App() {
     // ── Unified smart-plan call (single HTTP round-trip) ──
     var smartResult = await window.smartPlan(trimmed, sid, city);
 
-    // Auto-sync city tag when LLM detects a different city from the query
-    if (smartResult && smartResult.intent && smartResult.intent.city &&
-        smartResult.intent.city !== city) {
-      var knownCities = ['北京', '上海'];
-      if (knownCities.indexOf(smartResult.intent.city) !== -1) {
-        setCity(smartResult.intent.city);
-      }
+    // Determine effective city: LLM-detected city from query takes priority over tag
+    var effectiveCity = (smartResult && smartResult.intent && smartResult.intent.city) || city;
+    var knownCities = ['北京', '上海'];
+    if (effectiveCity !== city && knownCities.indexOf(effectiveCity) !== -1) {
+      setCity(effectiveCity);
     }
 
     if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
@@ -249,12 +247,15 @@ function App() {
       // followup or conflict: no routes yet
       var analysis2 = mapApiToNL(smartResult, trimmed);
       if (analysis2.branch === 'followup') {
+        // Store detected city in nl so followup handler can use it
+        analysis2._detectedCity = effectiveCity;
         setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: analysis2.scene, nl: analysis2 }));
       } else if (analysis2.branch === 'conflict') {
+        analysis2._detectedCity = effectiveCity;
         setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: analysis2.scene, nl: analysis2 }));
       } else {
         // Unexpected stage — fall back to plan with the parsed intent
-        window.planWithFallback(trimmed, analysis2.scene, {}, city, smartResult.intent).then((result) => {
+        window.planWithFallback(trimmed, analysis2.scene, {}, effectiveCity, smartResult.intent).then((result) => {
           setChatState((s2) => ({
             ...s2, stage: 'route', scene: analysis2.scene, nl: analysis2,
             routes: result.routes, sessionId: result.sessionId || sid,
@@ -265,18 +266,19 @@ function App() {
       // API unavailable — fall back to heuristic analyze + plan (two-step)
       var hAnalysis = window.analyzeNL(trimmed);
       if (hAnalysis.branch === 'complete' || hAnalysis.branch === 'assumption') {
-        window.planWithFallback(trimmed, hAnalysis.scene, {}, city).then((result) => {
+        window.planWithFallback(trimmed, hAnalysis.scene, {}, effectiveCity).then((result) => {
           setChatState((s2) => ({
             ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
             routes: result.routes, sessionId: result.sessionId || sid,
           }));
         });
       } else if (hAnalysis.branch === 'followup') {
+        hAnalysis._detectedCity = effectiveCity;
         setChatState((s2) => ({ ...s2, stage: 'nl_followup', scene: hAnalysis.scene, nl: hAnalysis }));
       } else if (hAnalysis.branch === 'conflict') {
         setChatState((s2) => ({ ...s2, stage: 'nl_conflict', scene: hAnalysis.scene, nl: hAnalysis }));
       } else {
-        window.planWithFallback(trimmed, hAnalysis.scene, {}, city).then((result) => {
+        window.planWithFallback(trimmed, hAnalysis.scene, {}, effectiveCity).then((result) => {
           setChatState((s2) => ({
             ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
             routes: result.routes, sessionId: result.sessionId || sid,
@@ -296,12 +298,14 @@ function App() {
           ? nextAnswers.scene
           : s.scene || '朋友聚会';
         const query = window.buildQueryFromScene(nextScene, nextAnswers);
+        // Use detected city from API response, fall back to state city
+        var effectiveCity = (s.nl && s.nl._detectedCity) || city;
         // Append followup answers as a user message
         var prevMessages = s.conversationMessages || [];
         prevMessages = prevMessages.concat([{
           type: 'user', text: query, _key: Date.now(),
         }]);
-        window.planWithFallback(query, nextScene, nextAnswers, city).then((result) => {
+        window.planWithFallback(query, nextScene, nextAnswers, effectiveCity).then((result) => {
           setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, conversationMessages: prevMessages, sessionId: result.sessionId || s2.sessionId }));
         });
         return { ...s, answers: nextAnswers, stage: 'generating', conversationMessages: prevMessages };
@@ -327,7 +331,8 @@ function App() {
       prevMessages = prevMessages.concat([{
         type: 'user', text: '优先' + priority.label, _key: Date.now() + 1,
       }]);
-      window.planWithFallback(query, s.scene || '朋友聚会', s.answers, city).then((result) => {
+      var effectiveCity = (s.nl && s.nl._detectedCity) || city;
+      window.planWithFallback(query, s.scene || '朋友聚会', s.answers, effectiveCity).then((result) => {
         setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
       });
       return { ...s, stage: 'generating', conflictPriority: priority, conversationMessages: prevMessages };

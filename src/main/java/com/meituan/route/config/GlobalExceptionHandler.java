@@ -37,7 +37,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception e) {
         log.error("Unhandled exception: {}", e.getMessage(), e);
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误");
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误，请稍后重试");
     }
 
     private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, String message) {
