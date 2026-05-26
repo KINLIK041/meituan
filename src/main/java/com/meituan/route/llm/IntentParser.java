@@ -295,6 +295,13 @@ public class IntentParser {
             }
         }
 
+        // Rule-based city detection as safety net: when LLM misses "上海" in query
+        var ruleCity = detectCity(originalQuery);
+        if (!ruleCity.equals(city)) {
+            log.info("IntentParser: city corrected by rule from '{}' → '{}'", city, ruleCity);
+            city = ruleCity;
+        }
+
         return new UserIntent(originalQuery, city, district, categories, cuisine,
                 startTime, endTime, budget, partySize, minRating,
                 maxQueue, travelMode, goal, specialRequest, keywords, sessionId);
