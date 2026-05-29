@@ -14,6 +14,15 @@ function deriveImages(imageUrl) {
 }
 
 function buildDetailData(route) {
+  try {
+    return _buildDetailData(route);
+  } catch (e) {
+    console.error('[buildDetailData] crashed:', e);
+    return { places: [], transport: [], routeInfo: { route_name: '路线详情', total_time: '—', total_avg_per_person: 0 }, stationCount: 0 };
+  }
+}
+
+function _buildDetailData(route) {
   var hasRaw = route && route._raw && (route._raw.segments || []).length > 0;
 
   if (hasRaw) {
@@ -173,7 +182,7 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
   // Create map, markers, and polyline — only when AMap is ready and places change
   useEffectRD(() => {
     if (!containerRef.current || !window.AMap) return;
-
+    try {
     // Destroy previous map if any
     if (mapRef.current) {
       mapRef.current.destroy();
@@ -261,6 +270,10 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
       map.destroy();
       mapRef.current = null;
     };
+    } catch(e) {
+      console.warn('[GaodeMap] init failed, using fallback:', e.message);
+      return function() {}; // no cleanup needed
+    }
   }, [places]);
 
   // Update marker styles when activeIdx changes (no map destroy)
@@ -1318,6 +1331,19 @@ function MapChooserSheet({ open, onClose, targetPlace }) {
 
 // ─── Main detail screen ────────────────────────────────────────
 function RouteDetailScreen({ route, onBack, toast, setToast }) {
+  // Safety: if route is null/undefined, show a minimal fallback
+  if (!route) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#F7F7F8' }}>
+        <DetailTopBar title="路线详情" onBack={onBack} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14 }}>
+            <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>🗺</div>
+            暂无路线数据<br /><span style={{ fontSize: 12 }}>请返回重新选择路线</span>
+          </div>
+        </div>
+      </div>);
+  }
   const detail = buildDetailData(route);
   const places = detail.places;
   const transport = detail.transport;
