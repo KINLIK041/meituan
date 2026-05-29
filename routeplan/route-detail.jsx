@@ -854,6 +854,7 @@ function TagSm({ tone = 'green', children }) {
 // ─── Inline transport connector (A → B, NOT a card) ────────────
 // Renders as a small chip flowing on the timeline rail, no border, transparent feel.
 function TransportConnector({ t, onToast, onNavigate }) {
+  if (!t) return null; // Safety: skip missing transport entries
   const isMetro = t.mode && t.mode.includes('地铁');
   const isWalk = t.mode === '步行';
   const color = isMetro ? '#2456a6' : isWalk ? '#2c7a44' : '#48484A';
@@ -902,6 +903,7 @@ function TransportConnector({ t, onToast, onNavigate }) {
 // Compact two-row: pill+station on row 1, time/distance + 查看路线 on row 2,
 // so nothing wraps and items align cleanly against the rail.
 function DepartureInline({ t, onToast, onNavigate }) {
+  if (!t) return null; // Safety: skip missing transport entry
   return (
     <div style={{ padding: '0 4px 0 0' }}>
       <div style={{
@@ -915,13 +917,13 @@ function DepartureInline({ t, onToast, onNavigate }) {
           flexShrink: 0
         }}>
           <Icon name="TrainFront" size={11} color="#2456a6" />
-          {t.mode}
+          {t.mode || '出发'}
         </span>
         <span style={{
           fontSize: 12.5, color: '#1d1d1f', flex: 1, minWidth: 0,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
         }}>
-          {t.metro_line} · {t.station} {t.exit}
+          {(t.metro_line && t.station) ? (t.metro_line + ' · ' + t.station + ' ' + (t.exit || '')) : '从当前位置出发'}
         </span>
       </div>
       <div style={{
@@ -933,9 +935,9 @@ function DepartureInline({ t, onToast, onNavigate }) {
           fontSize: 11.5, color: '#8e8e93',
           display: 'inline-flex', alignItems: 'baseline', gap: 5
         }}>
-          <span>{t.walking_time}</span>
+          <span>{t.walking_time || '—'}</span>
           <span style={{ color: '#D1D1D6' }}>/</span>
-          <span>{t.distance}</span>
+          <span>{t.distance || '—'}</span>
         </span>
         <button onClick={(e) => {e.stopPropagation();onNavigate ? onNavigate() : onToast('已模拟跳转导航');}} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
@@ -955,7 +957,12 @@ function DepartureInline({ t, onToast, onNavigate }) {
 // The rail unifies all stations + transport segments into a single A→B→C flow.
 function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail, registerCardRef, places, transport, onNavigateToMap }) {
   const p = places || window.MOCK_PLACES || [];
-  const t = transport || window.MOCK_TRANSPORT || [];
+  // Build or pad transport so it always has enough entries for places
+  var t = transport || window.MOCK_TRANSPORT || [];
+  // Pad with synthetic entries if transport is too short for places
+  while (t.length < p.length + 1) {
+    t.push({ from: p[t.length - 1] ? p[t.length - 1].name : '上一站', to: p[t.length] ? p[t.length].name : '下一站', mode: '步行', icon: 'Footprints', walking_time: '5 分钟', distance: '' });
+  }
   const RAIL_X = 18; // x-center of the rail
   const NODE = 26; // station circle diameter
   const SUBNODE = 12; // transport mid-node diameter
@@ -969,7 +976,7 @@ function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail,
       {p.map((place, i) => {
         const isFirst = i === 0;
         const isLast = i === p.length - 1;
-        const transportBefore = i === 0 ? dep : t[i];
+        const transportBefore = i === 0 ? dep : (t[i] || null);
 
         return (
           <React.Fragment key={place.id}>
