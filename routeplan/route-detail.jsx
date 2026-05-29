@@ -189,11 +189,12 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
       mapRef.current = null;
     }
 
-    // Determine center: use first real Beijing coordinate, or Beijing center
+    // Determine center: use first valid coordinate, fallback to Beijing
     var center = [116.3972, 39.9163];
     for (var k = 0; k < places.length; k++) {
-      if (places[k].lng && places[k].lat && places[k].lng > 115.0 && places[k].lng < 118.0) {
-        center = [places[k].lng, places[k].lat];
+      var plng = places[k].lng, plat = places[k].lat;
+      if (plng && plat && plng > 100 && plng < 130 && plat > 20 && plat < 45) {
+        center = [plng, plat];
         break;
       }
     }
@@ -212,8 +213,8 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
         && Math.abs(lng) > 0.5 && Math.abs(lat) > 0.5;
     }
     var hasReal = places.some(function(p) { return isValidCoord(p.lng, p.lat); });
-    var centers = [{ lng: 116.3972, lat: 39.9163 }, { lng: 116.4072, lat: 39.9203 }, { lng: 116.3872, lat: 39.9123 },
-                   { lng: 116.4172, lat: 39.9083 }, { lng: 116.3772, lat: 39.9243 }];
+    var centers = [{ lng: 116.3972, lat: 39.9163 }, { lng: 121.4737, lat: 31.2304 }, { lng: 116.4072, lat: 39.9203 },
+                   { lng: 121.4837, lat: 31.2404 }, { lng: 116.3872, lat: 39.9123 }];
 
     const markers = places.map(function(p, i) {
       var lng, lat;
