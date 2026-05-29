@@ -715,7 +715,9 @@ curl -X POST http://localhost:8080/api/route/adjust \
 
 ## 性能指标
 
-> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。
+> 📊 **[查看完整性能测试报告 →](./performance-reports/performance-report-latest.md)**
+>
+> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。测试覆盖 6 场景 × 2 城市、7 个 Chip 调整、10 并发、30 秒压力测试。
 
 ### 端到端延迟
 

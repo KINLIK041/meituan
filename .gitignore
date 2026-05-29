@@ -47,6 +47,3 @@ routeplan/.claude/
 
 # Screen recording source files (large, not needed for the app)
 image/
-
-# Performance test reports
-performance-reports/
