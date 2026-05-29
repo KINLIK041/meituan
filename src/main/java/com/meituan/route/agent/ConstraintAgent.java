@@ -33,7 +33,7 @@ public class ConstraintAgent {
         log.info("ConstraintAgent analyzing {} routes against {} constraints",
                 routes.size(), constraints.size());
 
-        var routeReports = routes.stream()
+        var routeReports = routes.parallelStream()
                 .map(route -> {
                     var result = constraintEngine.validate(route, constraints, intent);
                     double score = constraintEngine.scoreRoute(route, constraints);

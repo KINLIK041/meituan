@@ -53,16 +53,16 @@ public class PlanningAgent {
         var routes = graphSolver.generatePlans(candidates, constraints, intent, 3);
 
         if (routes.isEmpty()) {
-            // Relax constraints and retry
+            // Try all relaxation levels in parallel — first success wins
             log.info("No initial solution, attempting constraint relaxation...");
             var relaxations = constraintEngine.relaxConstraints(constraints);
-
-            for (var relaxed : relaxations) {
-                routes = graphSolver.generatePlans(candidates, relaxed, intent, 2);
-                if (!routes.isEmpty()) {
-                    log.info("Found solution with relaxed constraints");
-                    break;
-                }
+            routes = relaxations.parallelStream()
+                    .map(relaxed -> graphSolver.generatePlans(candidates, relaxed, intent, 2))
+                    .filter(r -> !r.isEmpty())
+                    .findFirst()
+                    .orElse(List.of());
+            if (!routes.isEmpty()) {
+                log.info("Found solution with relaxed constraints");
             }
         }
 

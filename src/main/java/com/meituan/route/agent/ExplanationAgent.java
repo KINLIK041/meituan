@@ -30,9 +30,8 @@ public class ExplanationAgent {
 
         var detailed = explainer.compareRoutes(routes);
         var summary = buildSummary(routes, intent);
-        var comparison = explainer.compareRoutes(routes);
 
-        return new ExplanationResult(summary, detailed, routes, comparison);
+        return new ExplanationResult(summary, detailed, routes, detailed);
     }
 
     /**

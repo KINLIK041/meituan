@@ -88,8 +88,7 @@ public class RoutePlannerOrchestrator {
                     log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
                     return new ConversationAgent.ConversationResult(sid, intent, null, null);
                 })
-                : Mono.fromCallable(() -> conversationAgent.process(query, sessionId))
-                        .subscribeOn(Schedulers.boundedElastic());
+                : conversationAgent.processAsync(query, sessionId);
 
         return Mono.zip(llmMono, speculativeDiscovery)
                 .flatMap(tuple -> {
@@ -128,9 +127,7 @@ public class RoutePlannerOrchestrator {
                                     null, ""));
                         }
 
-                        for (var route : planResult.routes()) {
-                            sessionManager.addSnapshot(actualSessionId, route, intent);
-                        }
+                        sessionManager.addSnapshots(actualSessionId, planResult.routes(), intent);
 
                         // Constraint analysis and explanation are independent — run in parallel
                         var constraintMono = Mono.fromCallable(() -> {
@@ -168,80 +165,99 @@ public class RoutePlannerOrchestrator {
 
     /**
      * Adjustment pipeline: modify an existing route based on natural language feedback.
+     * Runs session lookup + constraint parsing in parallel with the conversation LLM call
+     * (Mono.zip), then constraint analysis + explanation in parallel at the tail.
      */
     public Mono<PlanResponse> adjustRoute(String sessionId, String adjustment, String requestCity) {
-        return Mono.fromCallable(() -> {
-            log.info("Orchestrator: adjusting route for session {}: '{}', city={}", sessionId, adjustment, requestCity);
+        log.info("Orchestrator: adjusting route for session {}: '{}', city={}", sessionId, adjustment, requestCity);
 
+        // Phase 1 (parallel): session lookup + preprocessing  ||  conversation LLM call
+        var preprocessMono = Mono.fromCallable(() -> {
             var sessionOpt = sessionManager.getSession(sessionId);
             if (sessionOpt.isEmpty()) {
-                return Mono.<PlanResponse>just(new PlanResponse(sessionId, List.of(),
-                        "会话不存在或已过期", null, ""));
+                return new AdjustmentContext(null, null, null, null, true, false);
             }
-
             var session = sessionOpt.get();
             var currentRoute = sessionManager.getLatestRoute(sessionId).orElse(null);
             if (currentRoute == null) {
+                return new AdjustmentContext(null, null, null, null, false, true);
+            }
+            var additionalConstraints = constraintAgent.parseAdjustmentConstraints(adjustment);
+            int keepCount = sessionManager.resolveAdjustment(adjustment, currentRoute);
+            var keptPrefix = currentRoute.segments().stream().limit(keepCount).toList();
+            return new AdjustmentContext(additionalConstraints, keptPrefix, session, currentRoute, false, false);
+        }).subscribeOn(Schedulers.boundedElastic());
+
+        var convMono = conversationAgent.processAsync(adjustment, sessionId);
+
+        return Mono.zip(preprocessMono, convMono).flatMap(tuple -> {
+            var ctx = tuple.getT1();
+            var convResult = tuple.getT2();
+
+            if (ctx.sessionNotFound) {
+                return Mono.just(new PlanResponse(sessionId, List.of(), "会话不存在或已过期", null, ""));
+            }
+            if (ctx.fallbackToPlan) {
                 return planRoute(adjustment, sessionId, requestCity);
             }
 
-            // Parse the adjustment constraints
-            var additionalConstraints = constraintAgent.parseAdjustmentConstraints(adjustment);
-
-            // Resolve which POIs to keep
-            int keepCount = sessionManager.resolveAdjustment(adjustment, currentRoute);
-            var keptPrefix = currentRoute.segments().stream()
-                    .limit(keepCount)
-                    .toList();
-
-            // Process adjustment through conversation agent
-            var convResult = conversationAgent.process(adjustment, sessionId);
             var parsedIntent = (requestCity != null && !requestCity.isBlank())
                     ? convResult.intent().withCity(requestCity)
                     : convResult.intent();
-
-            // Merge missing context from previous intent (adjustment queries like "换一家" lack city/district)
             final var newIntent = (convResult.previousIntent() != null)
                     ? mergeIntentContext(parsedIntent, convResult.previousIntent())
                     : parsedIntent;
 
-            // Re-discover with new intent
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
-                // Re-plan with kept prefix
-                var planResult = planningAgent.replan(discovery, newIntent, keptPrefix, additionalConstraints);
+                var planResult = planningAgent.replan(discovery, newIntent,
+                        ctx.keptPrefix, ctx.additionalConstraints);
 
                 if (!planResult.hasRoutes()) {
                     return Mono.just(new PlanResponse(sessionId, List.of(),
                             "调整后无法生成新路线", null, ""));
                 }
 
-                // Validate new plans
+                // Build constraints including adjustment-specific ones
                 var constraints = constraintEngine.buildConstraints(newIntent, discovery.candidates());
-                if (additionalConstraints != null) {
-                    constraints.addAll(additionalConstraints);
-                }
-                var constraintReport = constraintAgent.analyze(planResult.routes(), constraints, newIntent);
-
-                // Store new snapshots
-                for (var route : planResult.routes()) {
-                    sessionManager.addSnapshot(sessionId, route, newIntent);
+                if (ctx.additionalConstraints != null) {
+                    constraints.addAll(ctx.additionalConstraints);
                 }
 
-                var explanation = explanationAgent.explain(planResult.routes(), newIntent);
+                // Batch-save snapshots (single DB round-trip)
+                sessionManager.addSnapshots(sessionId, planResult.routes(), newIntent);
 
-                return Mono.just(new PlanResponse(
-                        sessionId,
-                        planResult.routes(),
-                        constraintReport.allFeasible() ? null : "调整后存在约束冲突",
-                        constraintReport.bestRoute(),
-                        explanation.comparisonHtml()
-                ));
+                // Constraint analysis and explanation are independent — run in parallel
+                var constraintMono = Mono.fromCallable(() ->
+                    constraintAgent.analyze(planResult.routes(), constraints, newIntent)
+                ).subscribeOn(Schedulers.boundedElastic());
+
+                var explanationMono = Mono.fromCallable(() ->
+                    explanationAgent.explain(planResult.routes(), newIntent)
+                ).subscribeOn(Schedulers.boundedElastic());
+
+                return Mono.zip(constraintMono, explanationMono).map(postResult -> {
+                    var constraintReport = postResult.getT1();
+                    var explanation = postResult.getT2();
+                    return new PlanResponse(
+                            sessionId,
+                            planResult.routes(),
+                            constraintReport.allFeasible() ? null : "调整后存在约束冲突",
+                            constraintReport.bestRoute(),
+                            explanation.comparisonHtml()
+                    );
+                });
             });
-        })
-        .flatMap(m -> m)
-        .subscribeOn(Schedulers.boundedElastic())
-        .timeout(Duration.ofSeconds(15));
+        }).timeout(Duration.ofSeconds(15));
     }
+
+    private record AdjustmentContext(
+            List<com.meituan.route.model.Constraint> additionalConstraints,
+            List<Route.RouteSegment> keptPrefix,
+            SessionStateManager.Session session,
+            Route currentRoute,
+            boolean sessionNotFound,
+            boolean fallbackToPlan
+    ) {}
 
     /**
      * Get comparison data for a session.

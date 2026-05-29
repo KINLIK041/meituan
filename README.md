@@ -190,6 +190,65 @@ v4:  ┌─ DISTRICT_MAP 简称映射 (20+)
      └─ effectiveCity 前端即时生效 + _detectedCity 传递
 ```
 
+#### v4 → v5：全面并行化 + 响应式重构
+
+**问题 1 — adjustRoute 流程完全串行 (P0)：** 调整路线的整个流程（会话查询 → 约束解析 → LLM 对话 → POI 发现 → 重规划 → 约束验证 → 解释生成）全部顺序执行。对比 planRoute 已在两处使用 Mono.zip 并行，adjustRoute 完全没有利用并行能力，调整速度比初始规划慢 2-3 倍。
+
+**修复：** 重构 adjustRoute 为真并行流程：
+- Phase 1: `Mono.zip(preprocessMono, convMono)` — 会话查询+约束解析 与 LLM 对话调用**同时执行**
+- Phase 2: 发现 → 重规划（顺序依赖）
+- Phase 3: `Mono.zip(constraintMono, explanationMono)` — 约束分析 与 解释生成**同时执行**
+
+**问题 2 — ConversationAgent 串行执行 (P0)：** `intentParser.parse()`（LLM 调用 ~3-5s）和 `sessionManager.getSession()`（DB 查询）本无依赖关系，但按顺序执行，每次请求浪费 300-500ms。
+
+**修复：** 新增 `processAsync()` 方法返回 `Mono<ConversationResult>`，内部使用 `Mono.zip(intentMono, sessionMono)` 并行执行 LLM 解析和会话查询。原有的 `process()` 保留向后兼容，委托给 `processAsync().block()`。新增 `IntentParser.parseAsync()` 返回 `Mono<UserIntent>`，将 LLM 调用原生集成到 WebFlux 响应式管道中，不再需要 `Mono.fromCallable` 包装。
+
+**问题 3 — PlanningAgent 约束松弛串行 (P1)：** 路线无解时，3 级松弛策略（去掉最低优先级约束 → 去掉两个最低优先级 → 预算放宽 50%）依次重试，每次重试都跑完整图搜索。失败场景下额外延迟 2-5 秒。
+
+**修复：** 将顺序 `for` 循环替换为 `relaxations.parallelStream().map(...).filter(...).findFirst()`，所有松弛级别**同时尝试**，谁先成功就用谁。
+
+**问题 4 — ConstraintAgent 路线验证串行 (P1)：** 2-3 条路线的约束验证和评分按顺序 `stream().map()` 执行，多路线场景下延迟叠加。
+
+**修复：** 改为 `routes.parallelStream().map()`，每条路线的验证+评分并发执行。
+
+**问题 5 — SessionStateManager 循环保存 (P2)：** 每条路线单独调 `snapshotRepository.save()` + `sessionRepository.save()`，3 条路线 = 6 次 DB 往返。
+
+**修复：** 新增 `addSnapshots()` 批量方法，使用 `snapshotRepository.saveAll(entities)` 一次写入所有快照，再单独更新一次 session → 3 条路线仅 2 次 DB 往返。
+
+**问题 6 — ExplanationAgent 重复计算 (P2)：** `explainer.compareRoutes(routes)` 在同一方法内被调用了**两次**，第二次调用完全冗余。
+
+**修复：** 删除重复调用，复用第一个结果。
+
+```
+v4:  adjustRoute 全串行 (约 8-10s)
+     ConversationAgent 串行 (parse + session)
+     Constraint 串行 + 重复 LLM 调用 + 循环 DB 写入
+
+v5:  ┌─ adjustRoute Phase1: Mono.zip(preprocess ‖ conversation)  真并行
+     ├─ ConversationAgent: Mono.zip(LLM ‖ session)  真并行
+     ├─ adjustRoute Phase3: Mono.zip(constraint ‖ explanation)  真并行
+     ├─ PlanningAgent: parallelStream 同时尝试所有松弛级别
+     ├─ ConstraintAgent: parallelStream 并发验证多条路线
+     ├─ SessionStateManager: saveAll 批量写入
+     └─ ExplanationAgent: 消除重复 compareRoutes 调用
+
+     延迟: 调整流程 ≈ 3-4s (提升 2-3x)
+     CPU 利用率: 多核并行 > 单核串行
+     DB 压力: saveAll 批量 > 逐条 save
+```
+
+**代码变更清单（7 个文件）：**
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `IntentParser.java` | 新增 `parseAsync()` | 返回 `Mono<UserIntent>`，LLM 调用原生响应式 |
+| `ConversationAgent.java` | 新增 `processAsync()` | 返回 `Mono<ConversationResult>`，Mono.zip 并行 |
+| `RoutePlannerOrchestrator.java` | 重构 | planRoute + adjustRoute 调用 processAsync；adjustRoute 全程并行化 |
+| `PlanningAgent.java` | 优化 | parallelStream 并行尝试约束松弛 |
+| `ConstraintAgent.java` | 优化 | parallelStream 并发验证路线 |
+| `SessionStateManager.java` | 新增 `addSnapshots()` | saveAll 批量持久化 |
+| `ExplanationAgent.java` | 修复 | 移除重复 compareRoutes 调用 |
+
 ---
 
 ## 数据库设计

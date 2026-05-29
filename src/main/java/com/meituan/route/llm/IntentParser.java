@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalTime;
 import java.util.*;
@@ -83,6 +85,28 @@ public class IntentParser {
      */
     public UserIntent parse(String query, String sessionId) {
         return parse(query, sessionId, null);
+    }
+
+    /**
+     * Reactive variant: offloads the blocking LLM call to boundedElastic so the
+     * event loop is never blocked, even under high concurrency. Use this from
+     * reactive chains to avoid thread-pool exhaustion.
+     */
+    public Mono<UserIntent> parseAsync(String query, String sessionId) {
+        return parseAsync(query, sessionId, null);
+    }
+
+    public Mono<UserIntent> parseAsync(String query, String sessionId, String cityHint) {
+        if (llmAvailable) {
+            return Mono.fromCallable(() -> parseWithLLM(query, sessionId, cityHint))
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .onErrorResume(e -> {
+                        log.warn("LLM parsing failed, falling back to rules: {}", e.getMessage());
+                        return Mono.fromCallable(() -> parseWithRules(query, sessionId))
+                                .subscribeOn(Schedulers.boundedElastic());
+                    });
+        }
+        return Mono.fromCallable(() -> parseWithRules(query, sessionId));
     }
 
     private UserIntent parse(String query, String sessionId, String cityHint) {

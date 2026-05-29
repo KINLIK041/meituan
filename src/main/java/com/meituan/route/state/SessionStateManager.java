@@ -82,24 +82,39 @@ public class SessionStateManager {
     }
 
     public void addSnapshot(String sessionId, Route route, UserIntent intent) {
-        var session = sessions.get(sessionId);
-        if (session != null) {
-            var newSnapshots = new ArrayList<>(session.snapshots());
-            int version = newSnapshots.size() + 1;
-            var snapshot = new Snapshot(version, route, intent, Instant.now());
-            newSnapshots.add(snapshot);
-            var updated = new Session(sessionId, newSnapshots, intent, session.createdAt(), Instant.now());
-            sessions.put(sessionId, updated);
+        addSnapshots(sessionId, List.of(route), intent);
+    }
 
-            try {
-                snapshotRepository.save(new SnapshotEntity(sessionId, version,
-                    toJson(route), intent != null ? toJson(intent) : null));
-                sessionRepository.save(new SessionEntity(sessionId,
+    /**
+     * Batch-save multiple route snapshots in a single DB round-trip.
+     * Avoids the per-route save loop that puts unnecessary pressure on the connection pool.
+     */
+    public void addSnapshots(String sessionId, List<Route> routes, UserIntent intent) {
+        var session = sessions.get(sessionId);
+        if (session == null) return;
+
+        int baseVersion = session.snapshots().size();
+        var entities = new ArrayList<SnapshotEntity>();
+        var newSnapshots = new ArrayList<>(session.snapshots());
+
+        for (int i = 0; i < routes.size(); i++) {
+            int version = baseVersion + i + 1;
+            var snapshot = new Snapshot(version, routes.get(i), intent, Instant.now());
+            newSnapshots.add(snapshot);
+            entities.add(new SnapshotEntity(sessionId, version,
+                    toJson(routes.get(i)), intent != null ? toJson(intent) : null));
+        }
+
+        var updated = new Session(sessionId, newSnapshots, intent, session.createdAt(), Instant.now());
+        sessions.put(sessionId, updated);
+
+        try {
+            snapshotRepository.saveAll(entities);
+            sessionRepository.save(new SessionEntity(sessionId,
                     intent != null ? toJson(intent) : null,
                     session.createdAt(), Instant.now()));
-            } catch (Exception e) {
-                log.warn("Failed to persist snapshot to DB: {}", e.getMessage());
-            }
+        } catch (Exception e) {
+            log.warn("Failed to persist snapshots to DB: {}", e.getMessage());
         }
     }
 
