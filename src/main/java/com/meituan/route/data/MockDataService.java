@@ -1,6 +1,8 @@
 package com.meituan.route.data;
 
 import com.meituan.route.model.POI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -18,6 +20,8 @@ import java.util.stream.Stream;
 @Service
 @ConditionalOnMissingBean(DianpingApiDataService.class)
 public class MockDataService implements DataService {
+
+    private static final Logger log = LoggerFactory.getLogger(MockDataService.class);
 
     private final Map<String, List<POI>> poiByCity = new ConcurrentHashMap<>();
     private final Map<String, POI> poiById = new ConcurrentHashMap<>();
@@ -157,16 +161,28 @@ public class MockDataService implements DataService {
                 .toList();
     }
 
+    // Placeholder district names from frontend Q&A that aren't real locations
+    private static final Set<String> PLACEHOLDER_DISTRICTS = Set.of(
+            "指定商圈", "当前位置附近", "当前位置", "公司附近", "回家路上", "地铁站附近", "商圈附近"
+    );
+
     private Stream<POI> getStream(String city, String district) {
         Stream<POI> stream = poiByCity.getOrDefault(city, List.of()).stream();
-        if (district != null && !district.isBlank()) {
-            stream = stream.filter(p -> {
+        // Skip filtering for placeholder districts — treat as city-wide search
+        if (district != null && !district.isBlank() && !PLACEHOLDER_DISTRICTS.contains(district)) {
+            var filtered = stream.filter(p -> {
                 if (p.district().equals(district)) return true;
                 if (p.name().contains(district)) return true;
                 if (p.district().contains(district) || district.contains(p.district())) return true;
                 if (p.address() != null && p.address().contains(district)) return true;
                 return false;
-            });
+            }).toList();
+            // Fallback: if district filter yields 0 results, search city-wide
+            if (!filtered.isEmpty()) {
+                return filtered.stream();
+            }
+            log.info("MockDataService: district '{}' matched 0 POIs, falling back to city-wide search", district);
+            return poiByCity.getOrDefault(city, List.of()).stream();
         }
         return stream;
     }

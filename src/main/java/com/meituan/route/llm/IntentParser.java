@@ -59,7 +59,12 @@ public class IntentParser {
             Map.entry("演出", "ENTERTAINMENT"), Map.entry("livehouse", "ENTERTAINMENT"), Map.entry("LiveHouse", "ENTERTAINMENT"),
             Map.entry("文化", "CULTURE"), Map.entry("博物馆", "CULTURE"), Map.entry("书店", "CULTURE"),
             Map.entry("艺术", "CULTURE"), Map.entry("美术馆", "CULTURE"), Map.entry("画廊", "CULTURE"),
-            Map.entry("展览", "CULTURE"), Map.entry("看展", "CULTURE"), Map.entry("创意园", "CULTURE")
+            Map.entry("展览", "CULTURE"), Map.entry("看展", "CULTURE"), Map.entry("创意园", "CULTURE"),
+            Map.entry("互动展览", "CULTURE"), Map.entry("互动", "ENTERTAINMENT"), Map.entry("儿童", "ENTERTAINMENT"),
+            Map.entry("亲子", "ENTERTAINMENT"), Map.entry("遛娃", "ENTERTAINMENT"), Map.entry("乐园", "ENTERTAINMENT"),
+            Map.entry("游乐", "ENTERTAINMENT"), Map.entry("动物园", "ATTRACTION"), Map.entry("植物园", "ATTRACTION"),
+            Map.entry("水族馆", "ATTRACTION"), Map.entry("海洋馆", "ATTRACTION"), Map.entry("科技馆", "CULTURE"),
+            Map.entry("自然博物馆", "CULTURE"), Map.entry("天文馆", "CULTURE"), Map.entry("图书馆", "CULTURE")
     );
 
     private static final Map<String, String> DISTRICT_MAP = Map.ofEntries(
@@ -531,8 +536,19 @@ public class IntentParser {
         var kw = new ArrayList<String>();
         if (query.contains("拍照")) kw.add("拍照好看");
         if (query.contains("约会")) kw.add("约会");
-        if (query.contains("亲子") || query.contains("带娃")) kw.add("亲子");
+        if (query.contains("亲子") || query.contains("带娃") || query.contains("遛娃")) kw.add("亲子");
         if (query.contains("网红")) kw.add("网红");
+        if (query.contains("互动展览") || query.contains("互动")) kw.add("互动展览");
+        if (query.contains("科技馆") || query.contains("科学")) kw.add("科技馆");
+        if (query.contains("动物") || query.contains("水族")) kw.add("动物园");
+        if (query.contains("乐园") || query.contains("游乐")) kw.add("乐园");
+        if (query.contains("安静")) kw.add("安静");
+        if (query.contains("放松") || query.contains("发呆") || query.contains("放空")) kw.add("放松");
+        if (query.contains("喝酒") || query.contains("喝一") || query.contains("酒吧") || query.contains("小酌")) kw.add("喝酒");
+        if (query.contains("美食") || query.contains("好吃")) kw.add("美食");
+        if (query.contains("面") && !query.contains("前面")) kw.add("面食");
+        if (query.contains("火锅")) kw.add("火锅");
+        if (query.contains("咖啡")) kw.add("咖啡");
         return kw;
     }
 
