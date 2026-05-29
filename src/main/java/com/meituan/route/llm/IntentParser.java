@@ -42,10 +42,24 @@ public class IntentParser {
             Map.entry("逛街", "SHOPPING"), Map.entry("购物", "SHOPPING"), Map.entry("商场", "SHOPPING"),
             Map.entry("吃", "RESTAURANT"), Map.entry("餐厅", "RESTAURANT"), Map.entry("美食", "RESTAURANT"),
             Map.entry("日料", "RESTAURANT"), Map.entry("火锅", "RESTAURANT"), Map.entry("烤鸭", "RESTAURANT"),
+            Map.entry("面", "RESTAURANT"), Map.entry("简餐", "RESTAURANT"), Map.entry("烤肉", "RESTAURANT"),
+            Map.entry("烧烤", "RESTAURANT"), Map.entry("小吃", "RESTAURANT"), Map.entry("咖啡", "RESTAURANT"),
+            Map.entry("甜品", "RESTAURANT"), Map.entry("烘焙", "RESTAURANT"), Map.entry("面包", "RESTAURANT"),
+            Map.entry("西餐", "RESTAURANT"), Map.entry("法餐", "RESTAURANT"), Map.entry("意式", "RESTAURANT"),
+            Map.entry("粤菜", "RESTAURANT"), Map.entry("川菜", "RESTAURANT"), Map.entry("湘菜", "RESTAURANT"),
+            Map.entry("本帮菜", "RESTAURANT"), Map.entry("上海菜", "RESTAURANT"), Map.entry("北京菜", "RESTAURANT"),
+            Map.entry("云南菜", "RESTAURANT"), Map.entry("喝茶", "RESTAURANT"), Map.entry("奶茶", "RESTAURANT"),
+            Map.entry("轻食", "RESTAURANT"), Map.entry("沙拉", "RESTAURANT"),
             Map.entry("景点", "ATTRACTION"), Map.entry("玩", "ATTRACTION"), Map.entry("公园", "ATTRACTION"),
+            Map.entry("园林", "ATTRACTION"), Map.entry("爬山", "ATTRACTION"), Map.entry("登山", "ATTRACTION"),
             Map.entry("电影", "ENTERTAINMENT"), Map.entry("酒吧", "ENTERTAINMENT"), Map.entry("娱乐", "ENTERTAINMENT"),
+            Map.entry("喝酒", "ENTERTAINMENT"), Map.entry("喝一", "ENTERTAINMENT"), Map.entry("喝杯", "ENTERTAINMENT"),
+            Map.entry("喝口", "ENTERTAINMENT"), Map.entry("小酌", "ENTERTAINMENT"), Map.entry("精酿", "ENTERTAINMENT"),
+            Map.entry("居酒屋", "ENTERTAINMENT"), Map.entry("KTV", "ENTERTAINMENT"), Map.entry("唱歌", "ENTERTAINMENT"),
+            Map.entry("演出", "ENTERTAINMENT"), Map.entry("livehouse", "ENTERTAINMENT"), Map.entry("LiveHouse", "ENTERTAINMENT"),
             Map.entry("文化", "CULTURE"), Map.entry("博物馆", "CULTURE"), Map.entry("书店", "CULTURE"),
-            Map.entry("艺术", "CULTURE")
+            Map.entry("艺术", "CULTURE"), Map.entry("美术馆", "CULTURE"), Map.entry("画廊", "CULTURE"),
+            Map.entry("展览", "CULTURE"), Map.entry("看展", "CULTURE"), Map.entry("创意园", "CULTURE")
     );
 
     private static final Map<String, String> DISTRICT_MAP = Map.ofEntries(

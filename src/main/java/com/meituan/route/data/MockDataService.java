@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
- * Mock data service with embedded Beijing (120) and Shanghai (100) POI data.
+ * Mock data service with embedded Beijing (200) and Shanghai (200) POI data.
  * Activated when 'dianping' profile is NOT active.
  */
 @Service

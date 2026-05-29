@@ -112,9 +112,23 @@ public class GraphSearchSolver {
             case "BEST_EXPERIENCE" -> sorted.sort((a, b) -> Double.compare(
                     b.rating() * 20 + b.popularityScore() * 0.3,
                     a.rating() * 20 + a.popularityScore() * 0.3));
-            case "FASTEST" -> sorted.sort((a, b) -> Double.compare(
-                    (100.0 - Math.min(a.visitDuration(), 100)) * 0.5 + a.rating() * 5,
-                    (100.0 - Math.min(b.visitDuration(), 100)) * 0.5 + b.rating() * 5));
+            case "FASTEST" -> {
+                // When minimizing walking, cluster POIs by geographic proximity
+                // Compute centroid of all candidates
+                double sumLat = 0, sumLng = 0;
+                for (var p : sorted) { sumLat += p.lat(); sumLng += p.lng(); }
+                double cLat = sumLat / sorted.size(), cLng = sumLng / sorted.size();
+                sorted.sort((a, b) -> {
+                    double distA = haversine(a.lat(), a.lng(), cLat, cLng);
+                    double distB = haversine(b.lat(), b.lng(), cLat, cLng);
+                    // Prefer POIs closer to centroid (clustered) + short visit + good rating
+                    double scoreA = (1.0 / Math.max(0.1, distA)) * 5.0
+                            + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3;
+                    double scoreB = (1.0 / Math.max(0.1, distB)) * 5.0
+                            + (100.0 - Math.min(b.visitDuration(), 100)) * 0.3 + b.rating() * 3;
+                    return Double.compare(scoreB, scoreA);
+                });
+            }
             case "CHEAPEST" -> sorted.sort((a, b) -> Double.compare(
                     Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5,
                     Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5));
@@ -213,15 +227,30 @@ public class GraphSearchSolver {
                 }
             }
 
-            // Prune beam to beam width
+            // Prune beam to beam width — for FASTEST, penalize travel time heavily
             if (nextBeam.size() > beamWidth) {
-                nextBeam.sort((a, b) -> Double.compare(b.score, a.score));
+                if ("FASTEST".equals(goal)) {
+                    // FASTEST: sort by score adjusted for travel time (shorter = better)
+                    nextBeam.sort((a, b) -> {
+                        double sa = a.score - a.totalTravelTime * 3.0;
+                        double sb = b.score - b.totalTravelTime * 3.0;
+                        return Double.compare(sb, sa);
+                    });
+                } else {
+                    nextBeam.sort((a, b) -> Double.compare(b.score, a.score));
+                }
                 nextBeam = new ArrayList<>(nextBeam.subList(0, beamWidth));
             }
 
             // Evaluate top entries as complete routes
             for (var entry : nextBeam) {
-                double score = entry.score / entry.visited.size(); // normalize by POI count
+                double score;
+                if ("FASTEST".equals(goal)) {
+                    // For FASTEST: heavily penalize total travel time
+                    score = (entry.score - entry.totalTravelTime * 5.0) / entry.visited.size();
+                } else {
+                    score = entry.score / entry.visited.size();
+                }
                 if (score > bestScore && entry.visited.size() >= 2) {
                     bestScore = score;
                     bestRoute = buildRoute(entry, intent, goal);

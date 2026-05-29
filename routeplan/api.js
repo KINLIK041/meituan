@@ -321,7 +321,7 @@ async function planWithFallback(query, scene, answers, city, intent) {
  * When backend is unavailable, reorder/filter mock routes based on chip label
  * so the user sees a visible change instead of the same results.
  */
-async function adjustWithFallback(sessionId, adjustment, currentRoutes, city) {
+async function adjustWithFallback(sessionId, adjustment, currentRoutes, city, scene, answers) {
   try {
     const result = await adjustRoute(sessionId, adjustment, city);
     if (result.routes.length > 0) return result;

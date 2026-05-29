@@ -44,16 +44,16 @@ langchain4j:
   open-ai:
     chat-model:
       api-key: ${DEEPSEEK_API_KEY:}
-      model-name: ${LLM_MODEL:deepseek-v4-flash}
+      model-name: ${LLM_MODEL:deepseek-chat}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
-      timeout: 8000
-      max-retries: 0
+      timeout: 20000
+      max-retries: 2
       log-requests: false
       log-responses: false
     streaming-chat-model:
       api-key: ${DEEPSEEK_API_KEY:}
-      model-name: ${LLM_MODEL:deepseek-v4-flash}
+      model-name: ${LLM_MODEL:deepseek-chat}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
       temperature: 0.1
 

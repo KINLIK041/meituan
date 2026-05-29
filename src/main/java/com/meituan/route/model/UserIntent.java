@@ -47,4 +47,11 @@ public record UserIntent(
                 minRating, maxQueueMinutes, travelMode, newGoal,
                 specialRequest, keywords, sessionId);
     }
+
+    public UserIntent withTravelMode(String newTravelMode) {
+        return new UserIntent(rawQuery, city, district, preferredCategories,
+                cuisinePreference, startTime, endTime, budget, partySize,
+                minRating, maxQueueMinutes, newTravelMode, optimizationGoal,
+                specialRequest, keywords, sessionId);
+    }
 }

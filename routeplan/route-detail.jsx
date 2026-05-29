@@ -70,6 +70,17 @@ function _buildDetailData(route) {
       };
     });
 
+    // Filter places by city to avoid mixing Beijing/Shanghai POIs
+    var targetCity = (raw.city) || (route._city) || window._currentCity;
+    if (targetCity) {
+      places = places.filter(function(p) {
+        if (!p.lng && !p.lat) return true; // keep POIs with no coords (can't verify)
+        if (targetCity === '北京') return p.lng > 115 && p.lng < 118 && p.lat > 39 && p.lat < 41;
+        if (targetCity === '上海') return p.lng > 120 && p.lng < 123 && p.lat > 30 && p.lat < 32;
+        return true;
+      });
+    }
+
     // Fill in distances between stations
     for (let i = 1; i < places.length; i++) {
       const prevSeg = segments[i];
@@ -155,9 +166,18 @@ function _buildDetailData(route) {
     });
   }
   if (places.length === 0) {
-    places = (window.getPlacesForRoute && window.getPlacesForRoute(route))
+    places = (window.getPlacesForRoute && window.getPlacesForRoute(route, route && route._city))
       || window.MOCK_PLACES || [];
   }
+
+  // Filter by city to avoid mixing Beijing/Shanghai POIs on the same map
+  var targetCity = route && route._city || window._currentCity;
+  if (targetCity && places.length > 0) {
+    places = places.filter(function(p) {
+      return !p.city || p.city === targetCity || !p.lng || (targetCity === '北京' ? p.lng > 115 && p.lng < 118 : p.lng > 120 && p.lng < 123);
+    });
+  }
+
   return {
     places: places,
     transport: window.MOCK_TRANSPORT || [],
@@ -189,8 +209,9 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
       mapRef.current = null;
     }
 
-    // Determine center: use first valid coordinate, fallback to Beijing
-    var center = [116.3972, 39.9163];
+    // Determine center: use first valid coordinate, fallback based on current city
+    var defaultCenter = (window._currentCity === '上海') ? [121.4737, 31.2304] : [116.3972, 39.9163];
+    var center = defaultCenter;
     for (var k = 0; k < places.length; k++) {
       var plng = places[k].lng, plat = places[k].lat;
       if (plng && plat && plng > 100 && plng < 130 && plat > 20 && plat < 45) {
@@ -213,8 +234,13 @@ function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
         && Math.abs(lng) > 0.5 && Math.abs(lat) > 0.5;
     }
     var hasReal = places.some(function(p) { return isValidCoord(p.lng, p.lat); });
-    var centers = [{ lng: 116.3972, lat: 39.9163 }, { lng: 121.4737, lat: 31.2304 }, { lng: 116.4072, lat: 39.9203 },
-                   { lng: 121.4837, lat: 31.2404 }, { lng: 116.3872, lat: 39.9123 }];
+    var currentCity = window._currentCity || '北京';
+    var isShanghai = currentCity === '上海';
+    var centers = isShanghai
+      ? [{ lng: 121.4737, lat: 31.2304 }, { lng: 121.4837, lat: 31.2404 }, { lng: 121.4637, lat: 31.2204 },
+         { lng: 121.4937, lat: 31.2504 }, { lng: 121.4537, lat: 31.2104 }]
+      : [{ lng: 116.3972, lat: 39.9163 }, { lng: 116.4072, lat: 39.9203 }, { lng: 116.3872, lat: 39.9123 },
+         { lng: 116.4172, lat: 39.9263 }, { lng: 116.3772, lat: 39.9063 }];
 
     const markers = places.map(function(p, i) {
       var lng, lat;

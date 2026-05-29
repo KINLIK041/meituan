@@ -188,7 +188,7 @@ function App() {
           { type: 'user', text: trimmed, _key: Date.now() + 1 },
         ]);
         var sid = s.sessionId || window.getSessionId();
-        window.adjustWithFallback(sid, adj.chipLabel, s.routes, city).then((result) => {
+        window.adjustWithFallback(sid, adj.chipLabel, s.routes, city, s.scene, s.answers).then((result) => {
           setChatState((s2) => ({
             ...s2, stage: 'route',
             routes: result.routes,
@@ -410,7 +410,7 @@ function App() {
         chipLabel: s.activeChip,
         _key: Date.now(),
       }]);
-      window.adjustWithFallback(sid, label, s.routes, city).then((result) => {
+      window.adjustWithFallback(sid, label, s.routes, city, s.scene, s.answers).then((result) => {
         setChatState((s2) => ({
           ...s2, stage: 'route',
           routes: result.routes,

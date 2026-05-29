@@ -40,8 +40,16 @@ public class DiscoveryAgent {
 
         // If specific categories are provided, search by each in parallel
         List<String> categories = intent.preferredCategories();
+        boolean hasKeywords = intent.keywords() != null && !intent.keywords().isEmpty();
         if (categories == null || categories.isEmpty()) {
-            categories = List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT", "CULTURE");
+            // When keywords are present, limit to food/drink/entertainment —
+            // searching all 5 categories would dilute results with attractions
+            // that have higher ratings but are irrelevant to keyword-based queries.
+            if (hasKeywords) {
+                categories = List.of("RESTAURANT", "ENTERTAINMENT");
+            } else {
+                categories = List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT", "CULTURE");
+            }
         }
 
         // Parallel search across categories
@@ -61,7 +69,6 @@ public class DiscoveryAgent {
                 .collectList()
                 .flatMap(pois -> {
                     var hasSpecific = intent.preferredCategories() != null && !intent.preferredCategories().isEmpty();
-                    var hasKeywords = intent.keywords() != null && !intent.keywords().isEmpty();
                     if (pois.isEmpty() && (hasSpecific || hasKeywords)) {
                         // No POIs found — fall back progressively:
                         // 1) keywords only (most relevant to user intent)

@@ -94,7 +94,10 @@ public class ConversationAgent {
     private boolean isAdjustmentQuery(String query) {
         var adj = query.toLowerCase();
         return adj.contains("换") || adj.contains("改") || adj.contains("调整")
-                || adj.contains("不要") || adj.contains("替换") || adj.contains("去掉");
+                || adj.contains("不要") || adj.contains("替换") || adj.contains("去掉")
+                || adj.contains("少走") || adj.contains("便宜") || adj.contains("排队")
+                || adj.contains("口味") || adj.contains("出片") || adj.contains("地铁")
+                || adj.contains("安静") || adj.contains("省时");
     }
 
     /**

@@ -1,5 +1,5 @@
 /**
- * 动态路线生成器 —— 从 window.ALL_PLACES（220个真实POI）按场景+答案筛选生成路线。
+ * 动态路线生成器 —— 从 window.ALL_PLACES（400个真实POI）按场景+答案筛选生成路线。
  * 替代 need-completion.jsx 中旧的硬编码 ROUTE_OPTIONS。
  */
 

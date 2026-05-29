@@ -223,9 +223,9 @@ public class RoutePlannerOrchestrator {
             var mergedIntent = (convResult.previousIntent() != null)
                     ? mergeIntentContext(parsedIntent, convResult.previousIntent())
                     : parsedIntent;
-            // "少走路" → force FASTEST optimization goal to minimize walking distance
+            // "少走路" → force FASTEST goal + WALKING mode to minimize walking distance
             final var newIntent = adjustment.contains("少走路") || adjustment.contains("少走")
-                    ? mergedIntent.withGoal("FASTEST")
+                    ? mergedIntent.withGoal("FASTEST").withTravelMode("WALKING")
                     : mergedIntent;
 
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
@@ -304,19 +304,57 @@ public class RoutePlannerOrchestrator {
                 ? previous.city()
                 : newIntent.city();
         var district = newIntent.district() != null ? newIntent.district() : previous.district();
+        // Merge keywords from previous intent
         var keywords = new java.util.ArrayList<>(newIntent.keywords());
         if (previous.keywords() != null) {
             for (var kw : previous.keywords()) {
                 if (!keywords.contains(kw)) keywords.add(kw);
             }
         }
+        // Merge preferredCategories from previous intent.
+        // When the LLM returns all 5 standard categories for an adjustment query like
+        // "少走路", it means no specific category was detected — use the previous
+        // intent's categories exclusively. Otherwise, merge both.
+        var STANDARD_CATEGORIES = java.util.Set.of("RESTAURANT", "SHOPPING", "ATTRACTION", "ENTERTAINMENT", "CULTURE");
+        var newCats = newIntent.preferredCategories() != null ? newIntent.preferredCategories() : java.util.List.<String>of();
+        var prevCats = previous.preferredCategories() != null ? previous.preferredCategories() : java.util.List.<String>of();
+        var newIsGeneric = newCats.size() >= 4 && newCats.stream().allMatch(STANDARD_CATEGORIES::contains);
+        java.util.List<String> categories;
+        if (newIsGeneric && !prevCats.isEmpty()) {
+            // LLM returned default all-category set — use previous intent's categories
+            categories = new java.util.ArrayList<>(prevCats);
+        } else if (newCats.isEmpty() && !prevCats.isEmpty()) {
+            categories = new java.util.ArrayList<>(prevCats);
+        } else {
+            categories = new java.util.ArrayList<>(newCats);
+            if (!prevCats.isEmpty()) {
+                for (var cat : prevCats) {
+                    if (!categories.contains(cat)) categories.add(cat);
+                }
+            }
+        }
+        // Merge cuisine preference
+        var cuisine = newIntent.cuisinePreference() != null ? newIntent.cuisinePreference() : previous.cuisinePreference();
+        // Merge special request
+        var specialReq = (newIntent.specialRequest() != null && !newIntent.specialRequest().isBlank())
+                ? newIntent.specialRequest() : previous.specialRequest();
+        // Merge time: adjustment LLM returns default times (14:00-22:00); preserve original
+        var startTime = newIntent.startTime() != null && !newIntent.startTime().equals(java.time.LocalTime.of(14, 0))
+                ? newIntent.startTime() : previous.startTime();
+        var endTime = newIntent.endTime() != null && !newIntent.endTime().equals(java.time.LocalTime.of(22, 0))
+                ? newIntent.endTime() : previous.endTime();
+        // Merge budget: use adjustment value if specified, otherwise preserve
+        var budget = newIntent.budget() > 0 ? newIntent.budget() : previous.budget();
+        // Merge rating/queue: preserve from previous unless explicitly changed
+        var minRating = newIntent.minRating() > 3.5 ? newIntent.minRating() : previous.minRating();
+        var maxQueue = newIntent.maxQueueMinutes() < 30 ? newIntent.maxQueueMinutes() : previous.maxQueueMinutes();
         return new com.meituan.route.model.UserIntent(
                 newIntent.rawQuery(), city, district,
-                newIntent.preferredCategories(), newIntent.cuisinePreference(),
-                newIntent.startTime(), newIntent.endTime(), newIntent.budget(),
-                newIntent.partySize(), newIntent.minRating(), newIntent.maxQueueMinutes(),
+                categories, cuisine,
+                startTime, endTime, budget,
+                newIntent.partySize(), minRating, maxQueue,
                 newIntent.travelMode(), newIntent.optimizationGoal(),
-                newIntent.specialRequest(), keywords, newIntent.sessionId()
+                specialReq, keywords, newIntent.sessionId()
         );
     }
 
