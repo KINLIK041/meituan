@@ -220,9 +220,13 @@ public class RoutePlannerOrchestrator {
             var parsedIntent = (requestCity != null && !requestCity.isBlank())
                     ? convResult.intent().withCity(requestCity)
                     : convResult.intent();
-            final var newIntent = (convResult.previousIntent() != null)
+            var mergedIntent = (convResult.previousIntent() != null)
                     ? mergeIntentContext(parsedIntent, convResult.previousIntent())
                     : parsedIntent;
+            // "少走路" → force FASTEST optimization goal to minimize walking distance
+            final var newIntent = adjustment.contains("少走路") || adjustment.contains("少走")
+                    ? mergedIntent.withGoal("FASTEST")
+                    : mergedIntent;
 
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
                 var planResult = planningAgent.replan(discovery, newIntent,

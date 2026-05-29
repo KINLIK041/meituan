@@ -94,10 +94,12 @@ public class ConstraintAgent {
         }
 
         // Travel mode
-        if (adjustment.contains("开车") || adjustment.contains("打车")) {
+        if (adjustment.contains("开车") || adjustment.contains("打车") || adjustment.contains("驾车")) {
             constraints.add(Constraint.travelMode("DRIVING", 6));
-        }
-        if (adjustment.contains("走路") || adjustment.contains("步行")) {
+        } else if (adjustment.contains("少走路") || adjustment.contains("少步行") || adjustment.contains("少走")) {
+            // "少走路" = WALKING but minimize walking distance
+            constraints.add(Constraint.travelMode("WALKING", 8));
+        } else if (adjustment.contains("走路") || adjustment.contains("步行")) {
             constraints.add(Constraint.travelMode("WALKING", 6));
         }
 

@@ -61,17 +61,35 @@ public class DiscoveryAgent {
                 .collectList()
                 .flatMap(pois -> {
                     var hasSpecific = intent.preferredCategories() != null && !intent.preferredCategories().isEmpty();
-                    if (pois.isEmpty() && hasSpecific) {
-                        // No POIs found for specific categories — fall back to all categories
-                        log.info("DiscoveryAgent: no POIs for {}, falling back to all categories",
+                    var hasKeywords = intent.keywords() != null && !intent.keywords().isEmpty();
+                    if (pois.isEmpty() && (hasSpecific || hasKeywords)) {
+                        // No POIs found — fall back progressively:
+                        // 1) keywords only (most relevant to user intent)
+                        // 2) RESTAURANT only (food/drink usually want restaurants)
+                        // 3) RESTAURANT + ATTRACTION (broad last resort)
+                        log.info("DiscoveryAgent: no POIs for {}, trying keyword-first fallback",
                                 intent.preferredCategories());
-                        var fallbackFluxes = List.of("RESTAURANT", "ATTRACTION").stream()
-                                .map(cat -> dataService.searchByCategory(city, intent.district(), cat))
-                                .toList();
-                        return Flux.merge(fallbackFluxes)
-                                .distinct(POI::id)
-                                .collectList()
-                                .flatMap(fallbackPois -> applyHardFilters(fallbackPois, intent));
+                        if (hasKeywords) {
+                            var kwFluxes = intent.keywords().stream()
+                                    .map(kw -> dataService.searchByKeyword(city, intent.district(), kw))
+                                    .toList();
+                            return Flux.merge(kwFluxes)
+                                    .distinct(POI::id)
+                                    .collectList()
+                                    .flatMap(kwPois -> {
+                                        if (!kwPois.isEmpty()) return applyHardFilters(kwPois, intent);
+                                        // Keywords also empty — try RESTAURANT only
+                                        log.info("DiscoveryAgent: keywords empty, trying RESTAURANT only");
+                                        return dataService.searchByCategory(city, intent.district(), "RESTAURANT")
+                                                .collectList()
+                                                .flatMap(rPois -> {
+                                                    if (!rPois.isEmpty()) return applyHardFilters(rPois, intent);
+                                                    // Last resort: all categories
+                                                    return broadFallback(city, intent);
+                                                });
+                                    });
+                        }
+                        return broadFallback(city, intent);
                     }
                     return applyHardFilters(pois, intent);
                 });
@@ -100,6 +118,18 @@ public class DiscoveryAgent {
                 .toList();
 
         return Mono.just(filtered);
+    }
+
+    /** Last-resort fallback: search all available categories. */
+    private Mono<List<POI>> broadFallback(String city, UserIntent intent) {
+        log.info("DiscoveryAgent: broad fallback (RESTAURANT + ATTRACTION)");
+        var fluxes = List.of("RESTAURANT", "ATTRACTION").stream()
+                .map(cat -> dataService.searchByCategory(city, intent.district(), cat))
+                .toList();
+        return Flux.merge(fluxes)
+                .distinct(POI::id)
+                .collectList()
+                .flatMap(pois -> applyHardFilters(pois, intent));
     }
 
     /**
