@@ -44,18 +44,39 @@ public class MockDataService implements DataService {
     // Maps common NL phrases to POI tags for fuzzy keyword matching
     private static final Map<String, List<String>> KEYWORD_TO_TAGS = Map.ofEntries(
             Map.entry("喝一杯", List.of("酒吧", "居酒屋", "精酿", "小酌", "酒", "咖啡", "日本料理")),
-            Map.entry("喝酒", List.of("酒吧", "居酒屋", "精酿", "小酌")),
+            Map.entry("喝一口酒", List.of("酒吧", "居酒屋", "精酿", "小酌", "酒", "咖啡")),
+            Map.entry("喝一杯酒", List.of("酒吧", "居酒屋", "精酿", "小酌", "酒", "咖啡")),
+            Map.entry("喝酒", List.of("酒吧", "居酒屋", "精酿", "小酌", "酒")),
+            Map.entry("酒", List.of("酒吧", "居酒屋", "精酿", "小酌", "日本料理")),
             Map.entry("回血", List.of("美食", "居酒屋", "酒吧", "咖啡", "甜品", "放松", "放空", "书店", "公园")),
             Map.entry("下班", List.of("美食", "居酒屋", "酒吧", "咖啡", "快餐", "简餐")),
             Map.entry("看展", List.of("博物馆", "艺术", "展览", "美术馆", "画廊")),
+            Map.entry("展览", List.of("博物馆", "艺术", "展览", "美术馆", "画廊")),
             Map.entry("拍照", List.of("拍照", "摄影", "出片", "打卡", "网红")),
+            Map.entry("出片", List.of("拍照", "摄影", "出片", "打卡", "网红")),
             Map.entry("亲子", List.of("亲子", "家庭", "儿童", "乐园")),
+            Map.entry("遛娃", List.of("亲子", "家庭", "儿童", "乐园", "公园")),
+            Map.entry("带娃", List.of("亲子", "家庭", "儿童", "乐园", "公园")),
             Map.entry("约会", List.of("约会", "浪漫", "氛围", "安静", "私密")),
             Map.entry("安静", List.of("安静", "放空", "书店", "图书馆", "咖啡")),
             Map.entry("放松", List.of("放松", "放空", "公园", "咖啡", "书店", "甜品")),
             Map.entry("散步", List.of("散步", "公园", "园林", "湖边", "河畔", "街区")),
             Map.entry("看书", List.of("书店", "图书馆", "咖啡", "安静")),
-            Map.entry("发呆", List.of("放空", "书店", "咖啡", "公园", "安静"))
+            Map.entry("发呆", List.of("放空", "书店", "咖啡", "公园", "安静")),
+            Map.entry("美食", List.of("美食", "本帮菜", "日本料理", "火锅", "小吃", "面食", "烧烤")),
+            Map.entry("好吃", List.of("美食", "本帮菜", "日本料理", "火锅", "小吃", "米其林")),
+            Map.entry("逛逛", List.of("购物", "街区", "创意园", "集市", "公园", "散步")),
+            Map.entry("逛街", List.of("购物", "街区", "创意园", "集市")),
+            Map.entry("文化", List.of("博物馆", "艺术", "历史", "展览", "文化")),
+            Map.entry("历史", List.of("博物馆", "历史", "古镇", "古迹", "名人故居")),
+            Map.entry("自然", List.of("公园", "植物园", "动物园", "自然", "湖泊", "园林")),
+            Map.entry("户外", List.of("公园", "登山", "骑行", "滨江", "露营", "散步")),
+            Map.entry("夜景", List.of("夜景", "观光", "地标", "外滩", "陆家嘴")),
+            Map.entry("网红", List.of("网红", "拍照", "打卡", "出片", "人气")),
+            Map.entry("打卡", List.of("网红", "拍照", "打卡", "出片", "地标")),
+            Map.entry("必去", List.of("地标", "5A景区", "人气", "网红", "必去")),
+            Map.entry("性价比", List.of("平价", "小吃", "快餐", "免费", "本帮菜")),
+            Map.entry("省钱", List.of("平价", "小吃", "快餐", "免费"))
     );
 
     @Override
@@ -75,12 +96,23 @@ public class MockDataService implements DataService {
             return p.tags().stream().anyMatch(t ->
                     associated.stream().anyMatch(a -> t.contains(a)));
         }
-        // Try each word in the keyword as a partial match
-        for (var word : keyword.split("[，,、\\s]+")) {
-            if (word.length() < 2) continue;
-            var partial = KEYWORD_TO_TAGS.get(word);
-            if (partial != null && p.tags().stream().anyMatch(t ->
-                    partial.stream().anyMatch(a -> t.contains(a)))) {
+        // Try substrings of the keyword (handle compound words like "喝一口酒" → "喝酒", "酒")
+        for (int len = keyword.length(); len >= 2; len--) {
+            for (int i = 0; i + len <= keyword.length(); i++) {
+                var sub = keyword.substring(i, i + len);
+                var subTags = KEYWORD_TO_TAGS.get(sub);
+                if (subTags != null && p.tags().stream().anyMatch(t ->
+                        subTags.stream().anyMatch(a -> t.contains(a)))) {
+                    return true;
+                }
+            }
+        }
+        // Try splitting by common delimiter characters
+        for (var part : keyword.split("[，,、\\s]+")) {
+            if (part.length() < 2) continue;
+            var partTags = KEYWORD_TO_TAGS.get(part);
+            if (partTags != null && p.tags().stream().anyMatch(t ->
+                    partTags.stream().anyMatch(a -> t.contains(a)))) {
                 return true;
             }
         }
