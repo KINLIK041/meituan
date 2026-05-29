@@ -775,8 +775,19 @@ function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, ro
   var routes = routesProp && routesProp.length > 0
     ? routesProp
     : (window.buildRoutesForScene && window.buildRoutesForScene(scene, answers, city || window._currentCity))
-    || ROUTE_OPTIONS[scene]
-    || ROUTE_OPTIONS['朋友聚会'];
+    || [];
+  // If still empty after all sources, show error state
+  if (!routes || routes.length === 0) {
+    return (
+      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.4 }}>📡</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>路线生成失败</div>
+        <div style={{ fontSize: 12, color: '#8e8e93', lineHeight: 1.6 }}>
+          服务暂时不可用<br/>请检查网络后返回重试
+        </div>
+      </div>
+    );
+  }
   // Stamp _scene on each route so getPlacesForRoute can find places
   routes = routes.map(function(r) { r._scene = scene; return r; });
   const isEmergency = scene === '临时救场';

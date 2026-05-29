@@ -287,21 +287,32 @@ async function planWithFallback(query, scene, answers, city, intent) {
   try {
     const result = await planRoute(query, null, city, intent || null);
     if (result.routes.length > 0) return result;
+    console.warn('/plan returned empty routes, trying /smart-plan');
   } catch (e) {
-    console.warn('Backend API unavailable, using mock data:', e.message);
+    console.warn('/plan failed, trying /smart-plan:', e.message);
   }
 
-  // Fallback: try dynamic builder first, then existing mock ROUTE_OPTIONS
-  const effectiveScene = scene || '朋友聚会';
-  const dynRoutes = window.buildRoutesForScene && window.buildRoutesForScene(effectiveScene, answers, city);
-  const mockRoutes = dynRoutes
-    || (window.ROUTE_OPTIONS && window.ROUTE_OPTIONS[effectiveScene])
-    || window.ROUTE_OPTIONS['朋友聚会'];
+  // Fallback: try /smart-plan with full analysis pipeline (backend mock data)
+  try {
+    const smartResult = await smartPlan(query, null, city);
+    if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
+      return {
+        sessionId: smartResult.sessionId || ('fb-' + Date.now()),
+        routes: smartResult._routes,
+        warning: null,
+        recommendedRoute: smartResult._routes[0] || null,
+      };
+    }
+  } catch (e2) {
+    console.warn('/smart-plan also failed:', e2.message);
+  }
+
+  // All backend calls exhausted — return empty with user-facing warning
   return {
-    sessionId: 'mock-' + Date.now(),
-    routes: mockRoutes,
-    warning: null,
-    recommendedRoute: mockRoutes[0] || null,
+    sessionId: 'err-' + Date.now(),
+    routes: [],
+    warning: '服务暂时不可用，请检查网络后重试',
+    recommendedRoute: null,
   };
 }
 
@@ -315,27 +326,15 @@ async function adjustWithFallback(sessionId, adjustment, currentRoutes, city) {
     const result = await adjustRoute(sessionId, adjustment, city);
     if (result.routes.length > 0) return result;
   } catch (e) {
-    console.warn('Backend API unavailable for adjust, using mock:', e.message);
+    console.warn('Backend API unavailable for adjust:', e.message);
   }
 
-  // Mock fallback: reorder based on chip label
-  var routes = (currentRoutes && currentRoutes.length > 0)
-    ? currentRoutes.slice()
-    : [];
-  if (routes.length === 0) {
-    // No current routes — try dynamic builder first
-    var dynRoutes = window.buildRoutesForScene && window.buildRoutesForScene('朋友聚会', {}, city);
-    routes = dynRoutes || (window.ROUTE_OPTIONS && window.ROUTE_OPTIONS['朋友聚会']) || [];
-  }
-
-  var label = (adjustment || '').trim();
-  var reordered = mockAdjustRoutes(routes, label);
-
+  // All backend calls exhausted — return empty with warning
   return {
-    sessionId: sessionId || ('mock-' + Date.now()),
-    routes: reordered,
-    warning: null,
-    recommendedRoute: reordered[0] || null,
+    sessionId: sessionId || ('err-' + Date.now()),
+    routes: [],
+    warning: '调整失败，请稍后重试',
+    recommendedRoute: null,
   };
 }
 
