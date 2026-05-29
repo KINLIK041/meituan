@@ -64,6 +64,7 @@ public class RoutePlannerOrchestrator {
      * cutting ~3-5 seconds from total latency.
      */
     public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity, UserIntent preParsedIntent) {
+        final var t0 = System.nanoTime();
         log.info("Orchestrator: starting route plan for '{}', city={}, preParsedIntent={}", query, requestCity, preParsedIntent != null);
 
         // Use pre-parsed intent city > requestCity > default 北京 for speculative discovery
@@ -73,13 +74,13 @@ public class RoutePlannerOrchestrator {
 
         var broadIntent = DiscoveryAgent.broadIntent(effectiveCity);
         var speculativeDiscovery = discoveryAgent.discover(broadIntent)
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnTerminate(() -> logTiming("Discovery(spec)", t0));
 
         // If intent was already parsed by /api/route/analyze, reuse it — skip duplicate LLM call
         var llmMono = preParsedIntent != null
                 ? Mono.fromCallable(() -> {
                     var sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : sessionManager.createSession();
-                    // Prefer pre-parsed intent's own city; requestCity is fallback
                     var ppCity = preParsedIntent.city();
                     var resolvedPpCity = (ppCity != null && !ppCity.isBlank())
                             ? ppCity
@@ -88,9 +89,12 @@ public class RoutePlannerOrchestrator {
                     log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
                     return new ConversationAgent.ConversationResult(sid, intent, null, null);
                 })
-                : conversationAgent.processAsync(query, sessionId, requestCity);
+                : conversationAgent.processAsync(query, sessionId, requestCity)
+                        .doOnTerminate(() -> logTiming("Conversation", t0));
 
+        final var tAfterZip = System.nanoTime();
         return Mono.zip(llmMono, speculativeDiscovery)
+                .doOnTerminate(() -> logTiming("Phase1(zip)", tAfterZip))
                 .flatMap(tuple -> {
                     var convResult = tuple.getT1();
                     var speculative = tuple.getT2();
@@ -109,17 +113,22 @@ public class RoutePlannerOrchestrator {
                     var hasSpecificFilters = (intent.district() != null && !intent.district().isBlank())
                             || (intent.keywords() != null && !intent.keywords().isEmpty());
                     var needsRediscovery = !effectiveCity.equals(city) || hasSpecificFilters;
+                    final var tDisc = System.nanoTime();
                     var discoveryMono = needsRediscovery
                             ? discoveryAgent.discover(intent).subscribeOn(Schedulers.boundedElastic())
+                                    .doOnTerminate(() -> logTiming("Discovery(targeted)", tDisc))
                             : Mono.just(speculative);
 
-                    return discoveryMono.flatMap(discovery -> {
+                    return discoveryMono
+                            .flatMap(discovery -> {
                         // Only filter when reusing broad speculative results; re-discovered results already have filters applied
                         var effectiveDiscovery = (!needsRediscovery && hasSpecificCategories(intent))
                                 ? discoveryAgent.filterForIntent(discovery, intent)
                                 : discovery;
 
+                        final var tPlan = System.nanoTime();
                         var planResult = planningAgent.plan(effectiveDiscovery, intent, null);
+                        logTiming("Planning", tPlan);
 
                         if (!planResult.hasRoutes()) {
                             return Mono.just(new PlanResponse(actualSessionId, List.of(),
@@ -132,12 +141,18 @@ public class RoutePlannerOrchestrator {
                         // Constraint analysis and explanation are independent — run in parallel
                         var constraintMono = Mono.fromCallable(() -> {
                             var constraints = constraintEngine.buildConstraints(intent, effectiveDiscovery.candidates());
-                            return constraintAgent.analyze(planResult.routes(), constraints, intent);
+                            final var tCa = System.nanoTime();
+                            var report = constraintAgent.analyze(planResult.routes(), constraints, intent);
+                            logTiming("Constraint", tCa);
+                            return report;
                         }).subscribeOn(Schedulers.boundedElastic());
 
-                        var explanationMono = Mono.fromCallable(() ->
-                            explanationAgent.explain(planResult.routes(), intent)
-                        ).subscribeOn(Schedulers.boundedElastic());
+                        var explanationMono = Mono.fromCallable(() -> {
+                            final var tEx = System.nanoTime();
+                            var result = explanationAgent.explain(planResult.routes(), intent);
+                            logTiming("Explanation", tEx);
+                            return result;
+                        }).subscribeOn(Schedulers.boundedElastic());
 
                         return Mono.zip(constraintMono, explanationMono).map(postResult -> {
                             var constraintReport = postResult.getT1();
@@ -145,6 +160,7 @@ public class RoutePlannerOrchestrator {
                             var routes = planResult.routes();
                             var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
 
+                            logTiming("TOTAL planRoute", t0);
                             return new PlanResponse(
                                     actualSessionId,
                                     routes,
@@ -298,6 +314,11 @@ public class RoutePlannerOrchestrator {
                 newIntent.travelMode(), newIntent.optimizationGoal(),
                 newIntent.specialRequest(), keywords, newIntent.sessionId()
         );
+    }
+
+    private static void logTiming(String step, long startNanos) {
+        var elapsed = (System.nanoTime() - startNanos) / 1_000_000.0;
+        log.info("[TIMING] {} took {}ms", step, Math.round(elapsed));
     }
 
     // Response types

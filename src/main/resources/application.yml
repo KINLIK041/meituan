@@ -75,15 +75,18 @@ gaode:
     security-key: ${GAODE_SECURITY_KEY:}
     base-url: https://restapi.amap.com
 
-# Actuator endpoints
+# Actuator + Prometheus
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      application: ai-route-planner
 
 ---
 # Mock profile (default) — 使用本地 JSON 数据
