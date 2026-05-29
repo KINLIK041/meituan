@@ -21,6 +21,7 @@
         <java.version>21</java.version>
         <langchain4j.version>1.0.0-beta3</langchain4j.version>
         <jgrapht.version>1.5.2</jgrapht.version>
+        <start-class>com.meituan.route.RouteApplication</start-class>
     </properties>
 
     <dependencies>

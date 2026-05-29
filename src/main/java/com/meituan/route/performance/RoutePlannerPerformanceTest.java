@@ -1,8 +1,8 @@
 package com.meituan.route.performance;
 
+import com.meituan.route.RouteApplication;
 import com.meituan.route.orchestrator.RoutePlannerOrchestrator;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import reactor.core.publisher.Mono;
 
@@ -25,7 +25,6 @@ import java.util.stream.IntStream;
  * Covers: single-request P50/P95/P99, concurrency, stress, pipeline timing,
  *         city coverage, scene coverage, adjustment flow, LLM cost estimation.
  */
-@SpringBootApplication(scanBasePackages = "com.meituan.route")
 public class RoutePlannerPerformanceTest {
 
     private static RoutePlannerOrchestrator orchestrator;
@@ -128,7 +127,7 @@ public class RoutePlannerPerformanceTest {
 
     // ─── Main entry ───
     public static void main(String[] args) throws Exception {
-        ConfigurableApplicationContext ctx = SpringApplication.run(RoutePlannerPerformanceTest.class, args);
+        ConfigurableApplicationContext ctx = SpringApplication.run(RouteApplication.class, args);
         orchestrator = ctx.getBean(RoutePlannerOrchestrator.class);
 
         System.out.println("\n╔══════════════════════════════════════════╗");
