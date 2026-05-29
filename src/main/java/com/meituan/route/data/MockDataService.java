@@ -41,12 +41,50 @@ public class MockDataService implements DataService {
                 .filter(p -> p.matchesCategory(category));
     }
 
+    // Maps common NL phrases to POI tags for fuzzy keyword matching
+    private static final Map<String, List<String>> KEYWORD_TO_TAGS = Map.ofEntries(
+            Map.entry("喝一杯", List.of("酒吧", "居酒屋", "精酿", "小酌", "酒", "咖啡", "日本料理")),
+            Map.entry("喝酒", List.of("酒吧", "居酒屋", "精酿", "小酌")),
+            Map.entry("回血", List.of("美食", "居酒屋", "酒吧", "咖啡", "甜品", "放松", "放空", "书店", "公园")),
+            Map.entry("下班", List.of("美食", "居酒屋", "酒吧", "咖啡", "快餐", "简餐")),
+            Map.entry("看展", List.of("博物馆", "艺术", "展览", "美术馆", "画廊")),
+            Map.entry("拍照", List.of("拍照", "摄影", "出片", "打卡", "网红")),
+            Map.entry("亲子", List.of("亲子", "家庭", "儿童", "乐园")),
+            Map.entry("约会", List.of("约会", "浪漫", "氛围", "安静", "私密")),
+            Map.entry("安静", List.of("安静", "放空", "书店", "图书馆", "咖啡")),
+            Map.entry("放松", List.of("放松", "放空", "公园", "咖啡", "书店", "甜品")),
+            Map.entry("散步", List.of("散步", "公园", "园林", "湖边", "河畔", "街区")),
+            Map.entry("看书", List.of("书店", "图书馆", "咖啡", "安静")),
+            Map.entry("发呆", List.of("放空", "书店", "咖啡", "公园", "安静"))
+    );
+
     @Override
     public Flux<POI> searchByKeyword(String city, String district, String keyword) {
         return Flux.fromStream(getStream(city, district))
-                .filter(p -> p.name().contains(keyword)
-                        || p.tags().stream().anyMatch(t -> t.contains(keyword))
-                        || p.description().contains(keyword));
+                .filter(p -> matchesKeyword(p, keyword));
+    }
+
+    private boolean matchesKeyword(POI p, String keyword) {
+        // Direct match
+        if (p.name().contains(keyword)) return true;
+        if (p.tags().stream().anyMatch(t -> t.contains(keyword))) return true;
+        if (p.description().contains(keyword)) return true;
+        // Fuzzy match: check keyword's associated tags
+        var associated = KEYWORD_TO_TAGS.get(keyword);
+        if (associated != null) {
+            return p.tags().stream().anyMatch(t ->
+                    associated.stream().anyMatch(a -> t.contains(a)));
+        }
+        // Try each word in the keyword as a partial match
+        for (var word : keyword.split("[，,、\\s]+")) {
+            if (word.length() < 2) continue;
+            var partial = KEYWORD_TO_TAGS.get(word);
+            if (partial != null && p.tags().stream().anyMatch(t ->
+                    partial.stream().anyMatch(a -> t.contains(a)))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
