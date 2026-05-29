@@ -102,14 +102,21 @@
    */
   function buildRoutesForScene(scene, answers, city) {
     answers = answers || {};
+    city = city || (typeof window !== 'undefined' && window._currentCity) || '北京';
     var all = Object.values(window.ALL_PLACES || {});
     if (all.length === 0) return null; // 数据未加载，调用方 fallback
 
     // ── 1. 按城市筛选 ──
     var pool = all.filter(function(p) {
-      return !city || (p.city || '') === city;
+      return (p.city || '') === city;
     });
-    if (pool.length < 3) pool = all; // 不够则放宽城市限制
+    // 不够 3 个时扩大范围但不跨城市（改匹配条件，非放宽 city 过滤）
+    if (pool.length < 3) {
+      pool = all.filter(function(p) {
+        var pc = p.city || '';
+        return pc === city || pc === '';
+      });
+    }
 
     // ── 2. 评分 ──
     var audiences = (SCENE_AUDIENCE[scene] || null);

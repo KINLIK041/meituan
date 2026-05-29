@@ -18,6 +18,20 @@
       name = p.name + ' (' + p.district + ')';
     }
 
+    // Derive all 4 images from the -1.jpg pattern (files exist on disk)
+    var rawImageUrl = (p.images && p.images[0]) || '';
+    var images = [];
+    if (rawImageUrl) {
+      var m = rawImageUrl.match(/^(.+)-1\.(jpg|png|webp)$/i);
+      if (m) {
+        for (var ni = 1; ni <= 4; ni++) {
+          images.push(m[1] + '-' + ni + '.' + m[2]);
+        }
+      } else {
+        images = [rawImageUrl];
+      }
+    }
+
     places[name] = {
       id: p.id,
       name: p.name,
@@ -38,8 +52,8 @@
       review_summary: (p.tags || []).join('、'),
       lng: p.lng,
       lat: p.lat,
-      imageUrl: (p.images && p.images[0]) || '',
-      images: p.images || [],
+      imageUrl: rawImageUrl,
+      images: images,
       address: p.address || '',
       city: p.city || '',
       district: p.district || '',
