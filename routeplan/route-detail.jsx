@@ -14,18 +14,30 @@ function deriveImages(imageUrl) {
 }
 
 function buildDetailData(route) {
-  const hasRaw = route && route._raw && (route._raw.segments || []).length > 0;
+  var hasRaw = route && route._raw && (route._raw.segments || []).length > 0;
 
   if (hasRaw) {
-    const raw = route._raw;
-    const segments = raw.segments || [];
+    var raw = route._raw;
+    var segments = raw.segments || [];
+    // Safety: filter out segments that reference a non-existent POI
+    segments = segments.filter(function(seg) { return seg && seg.poi; });
 
-    const places = segments.map((seg, i) => {
-      const poi = seg.poi || {};
-      const openStr = poi.openTime && poi.closeTime
+    if (segments.length === 0) {
+      hasRaw = false; // Force fallback below
+    }
+  }
+
+  if (hasRaw) {
+    var raw = route._raw;
+    var segments = raw.segments || [];
+
+    var places = segments.map(function(seg, i) {
+      var poi = seg.poi || {};
+      var openStr = poi.openTime && poi.closeTime
         ? `${poi.openTime} - ${poi.closeTime}` : '—';
+      var imgUrl = poi.imageUrl || '';
       return {
-        id: poi.id || `poi-${i}`,
+        id: poi.id || ('poi-' + i),
         name: poi.name || '未知地点',
         short: poi.name || '未知地点',
         category: poi.subCategory || poi.category || '',
@@ -37,12 +49,12 @@ function buildDetailData(route) {
         current_status: '营业中',
         current_status_short: '营业中',
         status_tone: 'green',
-        wait_time: (poi.queueTime || 0) > 0 ? `约 ${Math.round(poi.queueTime)} 分钟` : '无需排队',
+        wait_time: (poi.queueTime || 0) > 0 ? '约 ' + Math.round(poi.queueTime) + ' 分钟' : '无需排队',
         tags: poi.tags || [],
         risk_tags: [],
         recommendation_reason: poi.description || '',
-        imageUrl: poi.imageUrl || '',
-        images: poi.images || deriveImages(poi.imageUrl),
+        imageUrl: imgUrl,
+        images: deriveImages(imgUrl),
         address: poi.address || '',
         lng: poi.lng,
         lat: poi.lat,
@@ -110,8 +122,33 @@ function buildDetailData(route) {
     // Attach scene info for getPlacesForRoute lookup
     route._scene = route._scene || null;
   }
-  var places = (window.getPlacesForRoute && window.getPlacesForRoute(route))
-    || window.MOCK_PLACES || [];
+  // Build basic places from route.pois when mock data is unavailable (e.g. API routes)
+  if (route && route.pois && route.pois.length > 0) {
+    places = route.pois.map(function(p, i) {
+      var poiName = p.short || p.name || ('地点' + (i + 1));
+      return {
+        id: 'poi-' + i,
+        name: poiName, short: poiName,
+        category: p.category || '',
+        rating: p.rating || 0, review_count: 0,
+        avg_price: p.avg_price || p.avgCost || 0,
+        distance: i === 0 ? '距出发地' : '距上一站',
+        opening_hours: p.opening_hours || p.openTime || '—',
+        current_status: '营业中', current_status_short: '营业中', status_tone: 'green',
+        wait_time: p.wait_time || '无需排队',
+        tags: p.tags || [], risk_tags: [],
+        recommendation_reason: p.recommendation_reason || p.reason || p.description || '',
+        imageUrl: p.imageUrl || '',
+        images: deriveImages(p.imageUrl || ''),
+        address: p.address || '',
+        lng: p.lng, lat: p.lat,
+      };
+    });
+  }
+  if (places.length === 0) {
+    places = (window.getPlacesForRoute && window.getPlacesForRoute(route))
+      || window.MOCK_PLACES || [];
+  }
   return {
     places: places,
     transport: window.MOCK_TRANSPORT || [],

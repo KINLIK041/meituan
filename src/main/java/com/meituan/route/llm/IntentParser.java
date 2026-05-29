@@ -145,8 +145,12 @@ public class IntentParser {
      */
     public IntentAnalysisResult analyzeWithCompleteness(String query, String sessionId, String cityHint) {
         var intent = parse(query, sessionId, cityHint);
-        // When LLM doesn't detect a city from the query, use the user's selected city
-        if ((intent.city() == null || intent.city().isBlank()) && cityHint != null && !cityHint.isBlank()) {
+        // Resolve city: when query explicitly mentions a city, use it;
+        // otherwise fall back to the user's selected city (overrides LLM default "北京")
+        var detectedCity = detectCity(query);
+        if (detectedCity != null && !detectedCity.equals(intent.city())) {
+            intent = intent.withCity(detectedCity);
+        } else if (detectedCity == null && cityHint != null && !cityHint.isBlank()) {
             intent = intent.withCity(cityHint);
         }
         return assessCompleteness(intent);
@@ -274,6 +278,7 @@ public class IntentParser {
      * Uses a structured prompt to extract intent fields as JSON.
      */
     private UserIntent parseWithLLM(String query, String sessionId, String cityHint) {
+        var exampleCity = (cityHint != null && !cityHint.isBlank()) ? cityHint : "北京";
         var cityContext = (cityHint != null && !cityHint.isBlank())
                 ? "当前用户所在城市: " + cityHint + "。若查询未明确提到城市，city字段使用此城市。\n"
                 : "";
@@ -281,8 +286,8 @@ public class IntentParser {
 从查询提取JSON（只返回JSON）：
 查询: "%s"
 字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认14:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
-示例: {"city":"北京","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
-""".formatted(query));
+示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
+""".formatted(query, exampleCity));
 
         var json = chatModel.chat(prompt);
 
@@ -432,6 +437,15 @@ public class IntentParser {
                 || query.contains("闵行") || query.contains("宝山") || query.contains("嘉定")
                 || query.contains("松江") || query.contains("奉贤") || query.contains("青浦")
                 || query.contains("崇明") || query.contains("黄浦")) return "上海";
+        if (query.contains("北京") || query.contains("三里屯") || query.contains("国贸")
+                || query.contains("王府井") || query.contains("前门") || query.contains("故宫")
+                || query.contains("颐和园") || query.contains("天安门") || query.contains("天坛")
+                || query.contains("长城") || query.contains("北海公园") || query.contains("雍和宫")
+                || query.contains("西单") || query.contains("东城") || query.contains("西城")
+                || query.contains("海淀") || query.contains("朝阳") || query.contains("丰台")
+                || query.contains("东四") || query.contains("南锣鼓巷") || query.contains("什刹海")
+                || query.contains("鸟巢") || query.contains("水立方") || query.contains("圆明园")
+                || query.contains("798") || query.contains("潘家园") || query.contains("大栅栏")) return "北京";
         return null; // no city detected — let fallback chain use caller-provided city
     }
 

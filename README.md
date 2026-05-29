@@ -110,6 +110,8 @@
 
 ### 延迟优化
 
+> **架构说明：** v1 ~ v6 的优化均为**执行模型层面的改进**（串行→并行、同步→响应式、批量 DB 写入）。**五 Agent 架构（Conversation → Discovery → Planning → Constraint → Explanation）未发生结构性变化**，所有 Agent 接口保持向后兼容。
+
 #### v1 → v2：真并行执行
 
 **v1 问题：** 编排器代码注释写"并行执行"，但 Reactor 的 Mono 是惰性求值——Discovery Mono 在 LLM 完成后才被订阅，实际是**串行**的（5s LLM + 3s API = 8s+）。
@@ -248,6 +250,25 @@ v5:  ┌─ adjustRoute Phase1: Mono.zip(preprocess ‖ conversation)  真并行
 | `ConstraintAgent.java` | 优化 | parallelStream 并发验证路线 |
 | `SessionStateManager.java` | 新增 `addSnapshots()` | saveAll 批量持久化 |
 | `ExplanationAgent.java` | 修复 | 移除重复 compareRoutes 调用 |
+
+#### v5 → v6：跨城市数据串扰修复 + 路线详情容错
+
+**问题 1 — 上海查询返回北京数据 (P0)：** LLM 在未检测到城市时默认返回 `"city":"北京"`，但 `analyzeWithCompleteness` 仅在 `intent.city` 为 null/blank 时才应用 `cityHint`。由于"北京"既非 null 也非 blank，用户选择的"上海"被静默忽略，导致所有未明确提及城市的查询都返回北京数据。
+
+**修复（3 处）：**
+1. **`analyzeWithCompleteness`** — 使用 `detectCity(query)` 判断查询是否明确提及城市。若未提及（返回 null）且有 cityHint，优先使用 cityHint（覆盖 LLM 的"北京"默认值）
+2. **LLM Prompt 示例** — 将提示词中硬编码的 `"city":"北京"` 改为动态使用 `cityHint`，消除对北京的隐性偏好
+3. **`detectCity` 北京关键词** — 新增 20+ 北京地标/行政区关键词（三里屯、国贸、王府井、故宫、天安门等），确保明确指向北京的查询不会被 cityHint 覆盖
+
+**问题 2 — 点击"查看完整路线"白屏：** 当 `route._raw.segments` 包含无效 segment（无 POI）时，`buildDetailData` 崩溃。回退路径 `getPlacesForRoute` 仅匹配 mock 数据中的 POI 名称——API 返回的热门路线可能引用不在 mock 数据集中的 POI，导致返回 null，`MOCK_PLACES` 兜底数据（仅 6 个展示 POI）不足以渲染完整路线。
+
+**修复（2 处）：**
+1. **`buildDetailData`** — 新增 segment 校验过滤：移除缺少 POI 的 segment；若过滤后为空，自动切换至回退路径
+2. **回退路径** — 新增第三种数据源：直接从 `route.pois` 构建基础地点数据，确保即使 mock 数据不可用也能正常渲染
+
+**问题 3 — 路线详情只显示第一张图片：** 疑似 `deriveImages` 未执行或图片文件未上传至生产环境。经排查，全部 1600 张图片文件（400 个 POI × 4 张）在本地 `routeplan/images/stores/` 目录中均存在。
+
+**修复：** `buildDetailData` 现在直接调用 `deriveImages(imgUrl)`，不再依赖 POI 记录中可能不存在的 `images` 字段。开发者需确认 `routeplan/images/stores/` 目录已完整部署至生产服务器。
 
 ---
 
