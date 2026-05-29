@@ -54,6 +54,83 @@
 | 上班族 | 下班后高效逛吃 | 时间紧，效率优先 |
 | 探店博主 | 一天打卡多个网红店 | 路线最优，减少走路 |
 
+---
+
+## 性能指标
+
+> 📊 **[查看完整性能测试报告 →](./performance-reports/performance-report-latest.md)**
+>
+> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。测试覆盖 6 场景 × 2 城市、7 个 Chip 调整、10 并发、30 秒压力测试。
+
+### 端到端延迟
+
+| 指标 | 首次规划 (planRoute) | 增量调整 (adjustRoute) |
+|------|---------------------|----------------------|
+| **P50** | 1,165ms | 800ms |
+| **P95** | 2,403ms | 1,200ms |
+| LLM 占比 | 75-96% | 70-90% |
+| 内部代码耗时 | 30-130ms | 20-80ms |
+
+### Pipeline 阶段耗时分解
+
+```
+planRoute 典型请求 (1,165ms)
+├── LLM 语义解析       1,121ms  ████████████████████████  96%
+├── POI 发现 (spec)       29ms  █                        <1%
+├── POI 发现 (targeted)    6ms  █                        <1%
+├── 路线规划 (Beam)        9ms  █                        <1%
+├── 约束验证               1ms  █                        <1%
+└── 方案解释               0ms  █                        <1%
+```
+
+**核心结论**: 去掉 LLM 外部依赖后，内部全链路耗时 **30-130ms**。瓶颈完全在 DeepSeek API 延迟，内部代码已达工程最优。
+
+### 各 Agent 性能
+
+| Agent | 耗时 | 说明 |
+|-------|------|------|
+| ConversationAgent (LLM) | 1,000-2,000ms | DeepSeek API，与 Discovery 并行 |
+| DiscoveryAgent | 2-30ms | 内存过滤 400 POI，按品类+关键词并行搜索 |
+| PlanningAgent | 9-130ms | JGraphT Beam Search，beam width=20，max POIs=6 |
+| ConstraintAgent | 1-13ms | parallelStream 并发验证 3 条路线 |
+| ExplanationAgent | <5ms | 纯模板引擎，无 LLM Token 消耗 |
+
+### 覆盖范围
+
+| 维度 | 数据 |
+|------|------|
+| 城市 | 北京 + 上海（2 城） |
+| POI 总量 | 400（每城 200） |
+| POI 品类 | RESTAURANT / ENTERTAINMENT / CULTURE / ATTRACTION / SHOPPING |
+| 场景覆盖 | 6 个（下班回血 / 朋友聚会 / 情侣约会 / 亲子遛娃 / 一个人放松 / 临时救场） |
+| 心情偏好 | 15+（喝一杯 / 热汤面 / 轻食 / 拍照 / 安静 / 出片 / 发呆 ...） |
+| 调整维度 | 7 个 Chip（更便宜 / 少走路 / 不想排队 / 换个口味 / 更出片 / 地铁优先 / 更安静） |
+| LLM 准确率 | 100%（22 次测试中品类解析全部正确，含"喝一杯→ENTERTAINMENT"等模糊表达） |
+
+### 压力表现
+
+| 场景 | 结果 |
+|------|------|
+| 单用户连续 5 次调整 | 每次 < 1.2s，session 上下文正确保持 |
+| 城市切换（北京↔上海） | 即时生效，无跨城数据串扰 |
+| 并发 3 请求 | 全部正常响应，WebFlux 事件循环无阻塞 |
+| 内存占用 | JVM heap < 256MB（400 POI 常驻内存） |
+
+### 优化历程（v1 → v6）
+
+| 版本 | 关键优化 | 延迟变化 |
+|------|---------|---------|
+| v1 | 串行执行 | 10-15s |
+| v2 | LLM ‖ Discovery 真并行 | 6-8s |
+| v3 | 消除重复 LLM 调用 + smart-plan 统一端点 | 3-5s |
+| v4 | 城市识别 + 区名简称 | —（鲁棒性提升） |
+| v5 | 全面并行化（adjustRoute + parallelStream + saveAll） | 调整 3-4s |
+| v6 | 品类稀释修复 + 占位区名处理 | 1.2-2.4s |
+
+**从 v1 到 v6，端到端延迟降低 85%（15s → 1.2s）。**
+
+---
+
 ## 系统架构
 
 ```
@@ -711,82 +788,6 @@ curl -X POST http://localhost:8080/api/route/adjust \
   -d '{"sessionId": "sess_xxx", "adjustment": "少走点路，换成更便宜的"}'
 ```
 
----
-
-## 性能指标
-
-> 📊 **[查看完整性能测试报告 →](./performance-reports/performance-report-latest.md)**
->
-> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。测试覆盖 6 场景 × 2 城市、7 个 Chip 调整、10 并发、30 秒压力测试。
-
-### 端到端延迟
-
-| 指标 | 首次规划 (planRoute) | 增量调整 (adjustRoute) |
-|------|---------------------|----------------------|
-| **P50** | 1,165ms | 800ms |
-| **P95** | 2,403ms | 1,200ms |
-| LLM 占比 | 75-96% | 70-90% |
-| 内部代码耗时 | 30-130ms | 20-80ms |
-
-### Pipeline 阶段耗时分解
-
-```
-planRoute 典型请求 (1,165ms)
-├── LLM 语义解析       1,121ms  ████████████████████████  96%
-├── POI 发现 (spec)       29ms  █                        <1%
-├── POI 发现 (targeted)    6ms  █                        <1%
-├── 路线规划 (Beam)        9ms  █                        <1%
-├── 约束验证               1ms  █                        <1%
-└── 方案解释               0ms  █                        <1%
-```
-
-**核心结论**: 去掉 LLM 外部依赖后，内部全链路耗时 **30-130ms**。瓶颈完全在 DeepSeek API 延迟，内部代码已达工程最优。
-
-### 各 Agent 性能
-
-| Agent | 耗时 | 说明 |
-|-------|------|------|
-| ConversationAgent (LLM) | 1,000-2,000ms | DeepSeek API，与 Discovery 并行 |
-| DiscoveryAgent | 2-30ms | 内存过滤 400 POI，按品类+关键词并行搜索 |
-| PlanningAgent | 9-130ms | JGraphT Beam Search，beam width=20，max POIs=6 |
-| ConstraintAgent | 1-13ms | parallelStream 并发验证 3 条路线 |
-| ExplanationAgent | <5ms | 纯模板引擎，无 LLM Token 消耗 |
-
-### 覆盖范围
-
-| 维度 | 数据 |
-|------|------|
-| 城市 | 北京 + 上海（2 城） |
-| POI 总量 | 400（每城 200） |
-| POI 品类 | RESTAURANT / ENTERTAINMENT / CULTURE / ATTRACTION / SHOPPING |
-| 场景覆盖 | 6 个（下班回血 / 朋友聚会 / 情侣约会 / 亲子遛娃 / 一个人放松 / 临时救场） |
-| 心情偏好 | 15+（喝一杯 / 热汤面 / 轻食 / 拍照 / 安静 / 出片 / 发呆 ...） |
-| 调整维度 | 7 个 Chip（更便宜 / 少走路 / 不想排队 / 换个口味 / 更出片 / 地铁优先 / 更安静） |
-| LLM 准确率 | 100%（22 次测试中品类解析全部正确，含"喝一杯→ENTERTAINMENT"等模糊表达） |
-
-### 压力表现
-
-| 场景 | 结果 |
-|------|------|
-| 单用户连续 5 次调整 | 每次 < 1.2s，session 上下文正确保持 |
-| 城市切换（北京↔上海） | 即时生效，无跨城数据串扰 |
-| 并发 3 请求 | 全部正常响应，WebFlux 事件循环无阻塞 |
-| 内存占用 | JVM heap < 256MB（400 POI 常驻内存） |
-
-### 优化历程（v1 → v6）
-
-| 版本 | 关键优化 | 延迟变化 |
-|------|---------|---------|
-| v1 | 串行执行 | 10-15s |
-| v2 | LLM ‖ Discovery 真并行 | 6-8s |
-| v3 | 消除重复 LLM 调用 + smart-plan 统一端点 | 3-5s |
-| v4 | 城市识别 + 区名简称 | —（鲁棒性提升） |
-| v5 | 全面并行化（adjustRoute + parallelStream + saveAll） | 调整 3-4s |
-| v6 | 品类稀释修复 + 占位区名处理 | 1.2-2.4s |
-
-**从 v1 到 v6，端到端延迟降低 85%（15s → 1.2s）。**
-
----
 
 ## 核心算法：混合路线求解
 
