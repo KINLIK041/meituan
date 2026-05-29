@@ -33,21 +33,25 @@ public class ConversationAgent {
 
     /**
      * Synchronous entry point kept for backward compatibility.
-     * Prefer {@link #processAsync} — it integrates natively with WebFlux
-     * and avoids blocking a boundedElastic thread for the full LLM duration.
      */
     public ConversationResult process(String query, String sessionId) {
-        return processAsync(query, sessionId).block();
+        return processAsync(query, sessionId, null).block();
     }
 
     /**
      * Reactive entry point: runs the LLM intent parse and the session DB
      * lookup in parallel via Mono.zip, then assembles the result.
      *
-     * Saves 300-500ms per request compared to the sequential path.
+     * @param cityHint user's selected city — passed through to the LLM so
+     *                 queries without explicit city mention default to the
+     *                 correct city instead of always "北京"
      */
     public Mono<ConversationResult> processAsync(String query, String sessionId) {
-        log.info("ConversationAgent processing query: '{}' for session: {}", query, sessionId);
+        return processAsync(query, sessionId, null);
+    }
+
+    public Mono<ConversationResult> processAsync(String query, String sessionId, String cityHint) {
+        log.info("ConversationAgent processing query: '{}' for session: {}, cityHint={}", query, sessionId, cityHint);
 
         String actualSessionId = sessionId;
         if (actualSessionId == null || actualSessionId.isBlank()) {
@@ -58,7 +62,7 @@ public class ConversationAgent {
         final var sid = actualSessionId;
 
         // LLM parse (reactive, offloaded to boundedElastic) and session lookup in parallel
-        var intentMono = intentParser.parseAsync(query, sid);
+        var intentMono = intentParser.parseAsync(query, sid, cityHint);
         var sessionMono = Mono.fromCallable(() -> sessionManager.getSession(sid))
                 .subscribeOn(Schedulers.boundedElastic());
 

@@ -88,7 +88,7 @@ public class RoutePlannerOrchestrator {
                     log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
                     return new ConversationAgent.ConversationResult(sid, intent, null, null);
                 })
-                : conversationAgent.processAsync(query, sessionId);
+                : conversationAgent.processAsync(query, sessionId, requestCity);
 
         return Mono.zip(llmMono, speculativeDiscovery)
                 .flatMap(tuple -> {
@@ -188,7 +188,7 @@ public class RoutePlannerOrchestrator {
             return new AdjustmentContext(additionalConstraints, keptPrefix, session, currentRoute, false, false);
         }).subscribeOn(Schedulers.boundedElastic());
 
-        var convMono = conversationAgent.processAsync(adjustment, sessionId);
+        var convMono = conversationAgent.processAsync(adjustment, sessionId, requestCity);
 
         return Mono.zip(preprocessMono, convMono).flatMap(tuple -> {
             var ctx = tuple.getT1();
