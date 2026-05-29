@@ -59,7 +59,22 @@ public class DiscoveryAgent {
         var allPOIs = Flux.merge(poiFluxes)
                 .distinct(POI::id)
                 .collectList()
-                .flatMap(pois -> applyHardFilters(pois, intent));
+                .flatMap(pois -> {
+                    var hasSpecific = intent.preferredCategories() != null && !intent.preferredCategories().isEmpty();
+                    if (pois.isEmpty() && hasSpecific) {
+                        // No POIs found for specific categories — fall back to all categories
+                        log.info("DiscoveryAgent: no POIs for {}, falling back to all categories",
+                                intent.preferredCategories());
+                        var fallbackFluxes = List.of("RESTAURANT", "ATTRACTION").stream()
+                                .map(cat -> dataService.searchByCategory(city, intent.district(), cat))
+                                .toList();
+                        return Flux.merge(fallbackFluxes)
+                                .distinct(POI::id)
+                                .collectList()
+                                .flatMap(fallbackPois -> applyHardFilters(fallbackPois, intent));
+                    }
+                    return applyHardFilters(pois, intent);
+                });
 
         return allPOIs.map(pois -> {
             log.info("DiscoveryAgent found {} POIs after filtering", pois.size());
