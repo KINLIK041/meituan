@@ -222,7 +222,9 @@ public class GraphSearchSolver {
         var beam = new ArrayList<BeamEntry>();
         for (var poi : candidates) {
             if (intent.startTime() != null && !isWithinOpenHours(poi, intent.startTime(), poi.visitDuration())) {
-                continue; // POI not open at start time
+                log.info("[BeamInit] Skipping {} (open {}-{}, start {}, stay {}min)",
+                        poi.name(), poi.openTime(), poi.closeTime(), intent.startTime(), poi.visitDuration());
+                continue;
             }
             double poiScore = computePOIScore(poi, goal);
             beam.add(new BeamEntry(

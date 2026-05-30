@@ -287,7 +287,15 @@ function buildQueryFromScene(scene, answers) {
     '一小时后': '一小时后出发', '10 分钟内': '10分钟内到', '20 分钟内': '20分钟内到',
     '30 分钟内': '30分钟内到',
   };
-  if (answers.time) parts.push(timeMap[answers.time] || answers.time);
+  if (answers.time) {
+    // Clock times like "18:00", "19:00" etc. are passed directly
+    var t = answers.time;
+    if (/^\d{1,2}:\d{2}$/.test(t)) {
+      parts.push(t + '出发');
+    } else {
+      parts.push(timeMap[t] || t);
+    }
+  }
 
   const placeMap = {
     '当前位置附近': '当前位置附近', '当前位置': '当前位置', '公司附近': '公司附近',
@@ -297,6 +305,10 @@ function buildQueryFromScene(scene, answers) {
 
   if (answers.budget && answers.budget !== '不限' && answers.budget !== '不设上限' && answers.budget !== '看心情') {
     parts.push('预算' + answers.budget);
+  }
+
+  if (answers.duration && answers.duration !== '不限') {
+    parts.push('时长' + answers.duration);
   }
 
   if (answers.mood) {
