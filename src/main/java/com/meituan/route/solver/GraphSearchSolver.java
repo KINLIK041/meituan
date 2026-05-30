@@ -189,6 +189,20 @@ public class GraphSearchSolver {
         return graph;
     }
 
+    /** Check if a POI is open from arrivalTime through arrivalTime + stayMinutes. Handles overnight close (e.g. bar closes at 02:00). */
+    private static boolean isWithinOpenHours(POI poi, LocalTime arrival, int stayMinutes) {
+        var open = poi.openTime();
+        var close = poi.closeTime();
+        var depart = arrival.plusMinutes(stayMinutes);
+        if (close.isAfter(open)) {
+            // Normal: e.g. 10:00-22:00
+            return !arrival.isBefore(open) && !depart.isAfter(close);
+        } else {
+            // Overnight: e.g. 17:00-02:00 — close is next day
+            return !arrival.isBefore(open) && !(depart.isAfter(close) && depart.isBefore(open));
+        }
+    }
+
     /**
      * Search for best route using a beam-search approach with constraint checking.
      */
@@ -200,8 +214,7 @@ public class GraphSearchSolver {
         // Beam: list of partial routes, each as (visited List, last POI, arrivalTime, cost, score, travelTime)
         var beam = new ArrayList<BeamEntry>();
         for (var poi : candidates) {
-            if (intent.startTime() != null &&
-                    (intent.startTime().isBefore(poi.openTime()) || intent.startTime().plusMinutes(poi.visitDuration()).isAfter(poi.closeTime()))) {
+            if (intent.startTime() != null && !isWithinOpenHours(poi, intent.startTime(), poi.visitDuration())) {
                 continue; // POI not open at start time
             }
             double poiScore = computePOIScore(poi, goal);
@@ -236,7 +249,7 @@ public class GraphSearchSolver {
 
                     // Hard constraint: time window check
                     if (intent.endTime() != null && departureTime.isAfter(intent.endTime())) continue;
-                    if (arrivalTime.isBefore(nextPOI.openTime()) || departureTime.isAfter(nextPOI.closeTime())) continue;
+                    if (!isWithinOpenHours(nextPOI, arrivalTime, nextPOI.visitDuration())) continue;
 
                     double poiScore = computePOIScore(nextPOI, goal);
                     double newScore = entry.score + poiScore;
