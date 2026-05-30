@@ -133,9 +133,18 @@ public class DiscoveryAgent {
     }
 
     private boolean hasDrinkKeywords(UserIntent intent) {
-        if (intent.keywords() == null) return false;
-        return intent.keywords().stream().anyMatch(kw ->
-                kw.contains("酒") || kw.contains("喝") || kw.contains("吧") || kw.contains("精酿"));
+        // Check keywords
+        if (intent.keywords() != null) {
+            var kwMatch = intent.keywords().stream().anyMatch(kw ->
+                    kw.contains("酒") || kw.contains("喝") || kw.contains("吧") || kw.contains("精酿"));
+            if (kwMatch) return true;
+        }
+        // Also check raw query text
+        if (intent.rawQuery() != null) {
+            var q = intent.rawQuery();
+            return q.contains("酒") || q.contains("喝") || q.contains("吧") || q.contains("精酿");
+        }
+        return false;
     }
 
     private double computeBoostScore(POI poi, boolean wantsDrinks) {

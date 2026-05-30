@@ -529,7 +529,7 @@ function App() {
           {/* Main app — only when authenticated */}
           {!authChecked || !currentUser ? null : (
           <div style={{ display: 'contents' }}>
-          {page === 'chat' && (
+          <div style={{ display: page === 'chat' ? 'block' : 'none', height: '100%' }}>
             <ChatScreen
               chatState={chatState}
               city={city}
@@ -559,15 +559,15 @@ function App() {
               onReplayHistory={handleReplayHistory}
               onNewConversation={handleNewConversation}
             />
-          )}
-          {page === 'detail' && (
+          </div>
+          <div style={{ display: page === 'detail' ? 'block' : 'none', height: '100%' }}>
             <RouteDetailScreen
               route={chatState.detailRoute}
               onBack={() => setPage('chat')}
               toast={toast}
               setToast={setToast}
             />
-          )}
+          </div>
           </div>)}
         </div>
       </IOSDevice>
