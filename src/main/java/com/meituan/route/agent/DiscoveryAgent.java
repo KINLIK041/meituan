@@ -111,20 +111,46 @@ public class DiscoveryAgent {
      * Apply hard constraints to filter candidates.
      */
     private Mono<List<POI>> applyHardFilters(List<POI> pois, UserIntent intent) {
+        // Check if user wants drinks/bars
+        var wantsDrinks = hasDrinkKeywords(intent);
         var filtered = pois.stream()
                 .filter(poi -> {
-                    // Budget filter (hard ceiling at 2x budget for flexibility)
                     if (intent.budget() > 0 && poi.avgCost() > intent.budget() * 2) {
                         return false;
                     }
                     return true;
                 })
-                .sorted(Comparator.<POI, Double>comparing(p -> -p.rating())
-                        .thenComparing(p -> -p.popularityScore()))
-                .limit(20) // Limit candidates for solver performance
+                .sorted((a, b) -> {
+                    // Boost bar/drink POIs when user wants drinks
+                    double scoreA = computeBoostScore(a, wantsDrinks);
+                    double scoreB = computeBoostScore(b, wantsDrinks);
+                    return Double.compare(scoreB, scoreA);
+                })
+                .limit(50) // More candidates for better coverage
                 .toList();
 
         return Mono.just(filtered);
+    }
+
+    private boolean hasDrinkKeywords(UserIntent intent) {
+        if (intent.keywords() == null) return false;
+        return intent.keywords().stream().anyMatch(kw ->
+                kw.contains("酒") || kw.contains("喝") || kw.contains("吧") || kw.contains("精酿"));
+    }
+
+    private double computeBoostScore(POI poi, boolean wantsDrinks) {
+        double base = poi.rating() * 10 + poi.popularityScore() * 0.2;
+        if (wantsDrinks && isBarPOI(poi)) {
+            base += 30; // significant boost for bar-related POIs
+        }
+        return base;
+    }
+
+    private boolean isBarPOI(POI poi) {
+        if (poi.tags() == null) return false;
+        return poi.tags().stream().anyMatch(t ->
+                t.contains("酒") || t.contains("吧") || t.contains("精酿") || t.contains("居酒屋")
+                || t.contains("小酌") || t.contains("深夜"));
     }
 
     /** Last-resort fallback: search all available categories. */
@@ -229,7 +255,7 @@ public class DiscoveryAgent {
         var filtered = stream
                 .sorted(java.util.Comparator.<POI, Double>comparing(p -> -p.rating())
                         .thenComparing(p -> -p.popularityScore()))
-                .limit(20)
+                .limit(50)
                 .toList();
 
         log.info("DiscoveryAgent filtered speculative {} POIs → {} POIs (cats={}, district={}, keywords={})",
