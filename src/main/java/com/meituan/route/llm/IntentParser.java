@@ -436,6 +436,16 @@ public class IntentParser {
             city = ruleCity;
         }
 
+        // Post-process: replace ENTERTAINMENT with RESTAURANT — all bar/izakaya/drink
+        // POIs in the mock data are RESTAURANT-category, not ENTERTAINMENT.
+        if (categories.contains("ENTERTAINMENT")) {
+            categories = new ArrayList<>(categories);
+            categories.remove("ENTERTAINMENT");
+            if (!categories.contains("RESTAURANT")) {
+                categories.add("RESTAURANT");
+            }
+        }
+
         return new UserIntent(originalQuery, city, district, categories, cuisine,
                 startTime, endTime, budget, partySize, minRating,
                 maxQueue, travelMode, goal, specialRequest, keywords, sessionId);

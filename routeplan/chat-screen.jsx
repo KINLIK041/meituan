@@ -720,15 +720,7 @@ function ChatScreen({
     return () => { delete window._setShareOpen; };
   }, []);
 
-  // auto-scroll to top only on new conversation entry (welcome/completing/followup/conflict)
-  // — NOT on route adjustments (stage stays 'route')
-  var prevStageRef = useRefChat(null);
-  useEffectChat(() => {
-    if (scrollRef.current && chatState.stage !== 'route' && chatState.stage !== 'generating') {
-      scrollRef.current.scrollTop = 0;
-    }
-    prevStageRef.current = chatState.stage;
-  }, [chatState.stage, chatState.userText]);
+  // No auto-scroll — let user control scroll position
 
   const handleSendInput = () => {
     if (!input.trim()) return;
