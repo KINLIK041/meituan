@@ -129,8 +129,8 @@ public class GraphSearchSolver {
         var sorted = new ArrayList<>(candidates);
         switch (goal) {
             case "BEST_EXPERIENCE" -> sorted.sort((a, b) -> Double.compare(
-                    b.rating() * 20 + b.popularityScore() * 0.3,
-                    a.rating() * 20 + a.popularityScore() * 0.3));
+                    b.rating() * 20 + b.popularityScore() * 0.3 + barBoost(b),
+                    a.rating() * 20 + a.popularityScore() * 0.3 + barBoost(a)));
             case "FASTEST" -> {
                 double sumLat = 0, sumLng = 0;
                 for (var p : sorted) { sumLat += p.lat(); sumLng += p.lng(); }
@@ -139,27 +139,34 @@ public class GraphSearchSolver {
                     double distA = haversine(a.lat(), a.lng(), cLat, cLng);
                     double distB = haversine(b.lat(), b.lng(), cLat, cLng);
                     double scoreA = (1.0 / Math.max(0.1, distA)) * 5.0
-                            + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3;
+                            + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3 + barBoost(a);
                     double scoreB = (1.0 / Math.max(0.1, distB)) * 5.0
-                            + (100.0 - Math.min(b.visitDuration(), 100)) * 0.3 + b.rating() * 3;
+                            + (100.0 - Math.min(b.visitDuration(), 100)) * 0.3 + b.rating() * 3 + barBoost(b);
                     return Double.compare(scoreB, scoreA);
                 });
             }
             case "CHEAPEST" -> sorted.sort((a, b) -> Double.compare(
-                    Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5,
-                    Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5));
+                    Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5 + barBoost(a),
+                    Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5 + barBoost(b)));
             case "PREFERENCE" -> {
                 if (preference != null) {
                     sorted.sort((a, b) -> Double.compare(
-                            preferenceScorer.scorePOI(b, preference) * 10 + b.rating() * 5,
-                            preferenceScorer.scorePOI(a, preference) * 10 + a.rating() * 5));
+                            preferenceScorer.scorePOI(b, preference) * 10 + b.rating() * 5 + barBoost(b),
+                            preferenceScorer.scorePOI(a, preference) * 10 + a.rating() * 5 + barBoost(a)));
                 }
             }
             default -> sorted.sort((a, b) -> Double.compare(
-                    b.rating() * 10 + b.popularityScore() * 0.2,
-                    a.rating() * 10 + a.popularityScore() * 0.2));
+                    b.rating() * 10 + b.popularityScore() * 0.2 + barBoost(b),
+                    a.rating() * 10 + a.popularityScore() * 0.2 + barBoost(a)));
         }
         return sorted.subList(0, Math.min(15, sorted.size()));
+    }
+
+    private static double barBoost(POI poi) {
+        if (poi.tags() == null) return 0;
+        return poi.tags().stream().anyMatch(t ->
+                t.contains("酒") || t.contains("吧") || t.contains("精酿") || t.contains("居酒屋")
+                || t.contains("小酌") || t.contains("深夜")) ? 50 : 0;
     }
 
     /**
