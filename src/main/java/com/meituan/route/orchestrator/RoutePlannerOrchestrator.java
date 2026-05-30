@@ -3,7 +3,10 @@ package com.meituan.route.orchestrator;
 import com.meituan.route.agent.*;
 import com.meituan.route.model.Route;
 import com.meituan.route.model.UserIntent;
+import com.meituan.route.model.UserPreference;
+import com.meituan.route.service.UserProfileService;
 import com.meituan.route.solver.ConstraintEngine;
+import com.meituan.route.solver.PreferenceScorer;
 import com.meituan.route.state.SessionStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +15,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +36,8 @@ public class RoutePlannerOrchestrator {
     private final ExplanationAgent explanationAgent;
     private final SessionStateManager sessionManager;
     private final ConstraintEngine constraintEngine;
+    private final UserProfileService userProfileService;
+    private final PreferenceScorer preferenceScorer;
 
     public RoutePlannerOrchestrator(ConversationAgent conversationAgent,
                                     DiscoveryAgent discoveryAgent,
@@ -40,7 +45,9 @@ public class RoutePlannerOrchestrator {
                                     ConstraintAgent constraintAgent,
                                     ExplanationAgent explanationAgent,
                                     SessionStateManager sessionManager,
-                                    ConstraintEngine constraintEngine) {
+                                    ConstraintEngine constraintEngine,
+                                    UserProfileService userProfileService,
+                                    PreferenceScorer preferenceScorer) {
         this.conversationAgent = conversationAgent;
         this.discoveryAgent = discoveryAgent;
         this.planningAgent = planningAgent;
@@ -48,24 +55,32 @@ public class RoutePlannerOrchestrator {
         this.explanationAgent = explanationAgent;
         this.sessionManager = sessionManager;
         this.constraintEngine = constraintEngine;
+        this.userProfileService = userProfileService;
+        this.preferenceScorer = preferenceScorer;
     }
 
     /**
      * Full pipeline: plan a route from natural language query.
-     * Runs LLM intent parsing and speculative POI discovery in parallel.
      */
     public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity) {
-        return planRoute(query, sessionId, requestCity, null);
+        return planRoute(query, sessionId, requestCity, null, null);
     }
 
     /**
-     * Full pipeline with optional pre-parsed intent (from prior analyze call).
-     * When preParsedIntent is provided, the LLM parse step is skipped entirely,
-     * cutting ~3-5 seconds from total latency.
+     * Full pipeline with optional pre-parsed intent.
      */
     public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity, UserIntent preParsedIntent) {
+        return planRoute(query, sessionId, requestCity, preParsedIntent, null);
+    }
+
+    /**
+     * Full pipeline with pre-parsed intent + user preference for personalization.
+     */
+    public Mono<PlanResponse> planRoute(String query, String sessionId, String requestCity,
+                                         UserIntent preParsedIntent, String userId) {
         final var t0 = System.nanoTime();
-        log.info("Orchestrator: starting route plan for '{}', city={}, preParsedIntent={}", query, requestCity, preParsedIntent != null);
+        log.info("Orchestrator: starting route plan for '{}', city={}, preParsedIntent={}, userId={}",
+                query, requestCity, preParsedIntent != null, userId);
 
         // Use pre-parsed intent city > requestCity > default 北京 for speculative discovery
         final var effectiveCity = (preParsedIntent != null && preParsedIntent.city() != null && !preParsedIntent.city().isBlank())
@@ -80,7 +95,7 @@ public class RoutePlannerOrchestrator {
         // If intent was already parsed by /api/route/analyze, reuse it — skip duplicate LLM call
         var llmMono = preParsedIntent != null
                 ? Mono.fromCallable(() -> {
-                    var sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : sessionManager.createSession();
+                    var sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : sessionManager.createSession(userId);
                     var ppCity = preParsedIntent.city();
                     var resolvedPpCity = (ppCity != null && !ppCity.isBlank())
                             ? ppCity
@@ -89,15 +104,26 @@ public class RoutePlannerOrchestrator {
                     log.info("Skipped LLM parse — using pre-parsed intent from analyze step");
                     return new ConversationAgent.ConversationResult(sid, intent, null, null);
                 })
-                : conversationAgent.processAsync(query, sessionId, requestCity)
-                        .doOnTerminate(() -> logTiming("Conversation", t0));
+                : Mono.defer(() -> {
+                    // Resolve user API key before calling LLM
+                    return (userId != null && !userId.isBlank()
+                            ? userProfileService.resolveApiKey(userId)
+                            : Mono.just(new UserProfileService.UserApiKey(null, null)))
+                            .flatMap(ak -> conversationAgent.processAsync(query, sessionId, requestCity,
+                                    ak.providerName(), ak.apiKey()));
+                }).doOnTerminate(() -> logTiming("Conversation", t0));
 
+        // Load user profile + API key in parallel with LLM+Discovery
+        var prefMono = (userId != null && !userId.isBlank())
+                ? userProfileService.getUserProfile(userId)
+                : Mono.just(UserPreference.neutral());
         final var tAfterZip = System.nanoTime();
-        return Mono.zip(llmMono, speculativeDiscovery)
+        return Mono.zip(llmMono, speculativeDiscovery, prefMono)
                 .doOnTerminate(() -> logTiming("Phase1(zip)", tAfterZip))
                 .flatMap(tuple -> {
                     var convResult = tuple.getT1();
                     var speculative = tuple.getT2();
+                    var preference = tuple.getT3();
                     var actualSessionId = convResult.sessionId();
 
                     var rawIntent = convResult.intent();
@@ -127,13 +153,13 @@ public class RoutePlannerOrchestrator {
                                 : discovery;
 
                         final var tPlan = System.nanoTime();
-                        var planResult = planningAgent.plan(effectiveDiscovery, intent, null);
+                        var planResult = planningAgent.plan(effectiveDiscovery, intent, null, preference);
                         logTiming("Planning", tPlan);
 
                         if (!planResult.hasRoutes()) {
                             return Mono.just(new PlanResponse(actualSessionId, List.of(),
                                     planResult.warning() != null ? planResult.warning() : "无法生成路线方案",
-                                    null, ""));
+                                    null, "", Map.of(), Map.of()));
                         }
 
                         sessionManager.addSnapshots(actualSessionId, planResult.routes(), intent);
@@ -160,13 +186,26 @@ public class RoutePlannerOrchestrator {
                             var routes = planResult.routes();
                             var warning = constraintReport.allFeasible() ? null : "部分方案存在约束冲突";
 
+                            // Compute preference match data per route
+                            var prefMatchTags = new LinkedHashMap<String, List<String>>();
+                            var prefScores = new LinkedHashMap<String, Double>();
+                            var isNeutral = preference.userId() == null || "default".equals(preference.userId());
+                            if (!isNeutral) {
+                                for (var r : routes) {
+                                    prefMatchTags.put(r.id(), preferenceScorer.matchedTags(r, preference));
+                                    prefScores.put(r.id(), preferenceScorer.normalizedScore(r, preference));
+                                }
+                            }
+
                             logTiming("TOTAL planRoute", t0);
                             return new PlanResponse(
                                     actualSessionId,
                                     routes,
                                     warning,
                                     constraintReport.bestRoute(),
-                                    explanation.comparisonHtml()
+                                    explanation.comparisonHtml(),
+                                    prefMatchTags,
+                                    prefScores
                             );
                         });
                     });
@@ -185,7 +224,11 @@ public class RoutePlannerOrchestrator {
      * (Mono.zip), then constraint analysis + explanation in parallel at the tail.
      */
     public Mono<PlanResponse> adjustRoute(String sessionId, String adjustment, String requestCity) {
-        log.info("Orchestrator: adjusting route for session {}: '{}', city={}", sessionId, adjustment, requestCity);
+        return adjustRoute(sessionId, adjustment, requestCity, null);
+    }
+
+    public Mono<PlanResponse> adjustRoute(String sessionId, String adjustment, String requestCity, String userId) {
+        log.info("Orchestrator: adjusting route for session {}: '{}', city={}, userId={}", sessionId, adjustment, requestCity, userId);
 
         // Phase 1 (parallel): session lookup + preprocessing  ||  conversation LLM call
         var preprocessMono = Mono.fromCallable(() -> {
@@ -204,17 +247,27 @@ public class RoutePlannerOrchestrator {
             return new AdjustmentContext(additionalConstraints, keptPrefix, session, currentRoute, false, false);
         }).subscribeOn(Schedulers.boundedElastic());
 
-        var convMono = conversationAgent.processAsync(adjustment, sessionId, requestCity);
+        var convMono = Mono.defer(() -> {
+            return (userId != null && !userId.isBlank()
+                    ? userProfileService.resolveApiKey(userId)
+                    : Mono.just(new UserProfileService.UserApiKey(null, null)))
+                    .flatMap(ak -> conversationAgent.processAsync(adjustment, sessionId, requestCity,
+                            ak.providerName(), ak.apiKey()));
+        });
+        var prefMono = (userId != null && !userId.isBlank())
+                ? userProfileService.getUserProfile(userId)
+                : Mono.just(UserPreference.neutral());
 
-        return Mono.zip(preprocessMono, convMono).flatMap(tuple -> {
+        return Mono.zip(preprocessMono, convMono, prefMono).flatMap(tuple -> {
             var ctx = tuple.getT1();
             var convResult = tuple.getT2();
+            var preference = tuple.getT3();
 
             if (ctx.sessionNotFound) {
-                return Mono.just(new PlanResponse(sessionId, List.of(), "会话不存在或已过期", null, ""));
+                return Mono.just(new PlanResponse(sessionId, List.of(), "会话不存在或已过期", null, "", Map.of(), Map.of()));
             }
             if (ctx.fallbackToPlan) {
-                return planRoute(adjustment, sessionId, requestCity);
+                return planRoute(adjustment, sessionId, requestCity, null, userId);
             }
 
             var parsedIntent = (requestCity != null && !requestCity.isBlank())
@@ -230,11 +283,11 @@ public class RoutePlannerOrchestrator {
 
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
                 var planResult = planningAgent.replan(discovery, newIntent,
-                        ctx.keptPrefix, ctx.additionalConstraints);
+                        ctx.keptPrefix, ctx.additionalConstraints, preference);
 
                 if (!planResult.hasRoutes()) {
                     return Mono.just(new PlanResponse(sessionId, List.of(),
-                            "调整后无法生成新路线", null, ""));
+                            "调整后无法生成新路线", null, "", Map.of(), Map.of()));
                 }
 
                 // Build constraints including adjustment-specific ones
@@ -258,12 +311,24 @@ public class RoutePlannerOrchestrator {
                 return Mono.zip(constraintMono, explanationMono).map(postResult -> {
                     var constraintReport = postResult.getT1();
                     var explanation = postResult.getT2();
+                    var routes = planResult.routes();
+                    var prefMatchTags = new LinkedHashMap<String, List<String>>();
+                    var prefScores = new LinkedHashMap<String, Double>();
+                    var isNeutral = preference.userId() == null || "default".equals(preference.userId());
+                    if (!isNeutral) {
+                        for (var r : routes) {
+                            prefMatchTags.put(r.id(), preferenceScorer.matchedTags(r, preference));
+                            prefScores.put(r.id(), preferenceScorer.normalizedScore(r, preference));
+                        }
+                    }
                     return new PlanResponse(
                             sessionId,
-                            planResult.routes(),
+                            routes,
                             constraintReport.allFeasible() ? null : "调整后存在约束冲突",
                             constraintReport.bestRoute(),
-                            explanation.comparisonHtml()
+                            explanation.comparisonHtml(),
+                            prefMatchTags,
+                            prefScores
                     );
                 });
             });
@@ -369,7 +434,9 @@ public class RoutePlannerOrchestrator {
             List<Route> routes,
             String warning,
             Route recommendedRoute,
-            String explanation
+            String explanation,
+            Map<String, List<String>> preferenceMatchTags,
+            Map<String, Double> preferenceScores
     ) {}
 
     public record CompareResponse(

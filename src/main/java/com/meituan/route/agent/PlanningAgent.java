@@ -3,6 +3,7 @@ package com.meituan.route.agent;
 import com.meituan.route.model.Route;
 import com.meituan.route.model.Constraint;
 import com.meituan.route.model.UserIntent;
+import com.meituan.route.model.UserPreference;
 import com.meituan.route.solver.ConstraintEngine;
 import com.meituan.route.solver.GraphSearchSolver;
 import org.slf4j.Logger;
@@ -34,6 +35,14 @@ public class PlanningAgent {
      */
     public PlanningResult plan(DiscoveryAgent.DiscoveryResult discovery, UserIntent intent,
                                List<Constraint> additionalConstraints) {
+        return plan(discovery, intent, additionalConstraints, null);
+    }
+
+    /**
+     * Generate route plans with optional user preference for personalization.
+     */
+    public PlanningResult plan(DiscoveryAgent.DiscoveryResult discovery, UserIntent intent,
+                               List<Constraint> additionalConstraints, UserPreference preference) {
         log.info("PlanningAgent generating plans from {} candidates with goal: {}",
                 discovery.candidates().size(), intent.optimizationGoal());
 
@@ -49,8 +58,8 @@ public class PlanningAgent {
             constraints.addAll(additionalConstraints);
         }
 
-        // Generate plans (3 by default)
-        var routes = graphSolver.generatePlans(candidates, constraints, intent, 3);
+        // Generate plans (3 by default) — pass preference for PREFERENCE goal
+        var routes = graphSolver.generatePlans(candidates, constraints, intent, 3, preference);
 
         if (routes.isEmpty()) {
             // Try all relaxation levels in parallel — first success wins
@@ -87,11 +96,19 @@ public class PlanningAgent {
 
     /**
      * Re-plan with partial preservation (for adjustments).
-     * Keeps the prefix POIs and only re-optimizes the suffix.
      */
     public PlanningResult replan(DiscoveryAgent.DiscoveryResult discovery,
                                  UserIntent newIntent, List<Route.RouteSegment> keptPrefix,
                                  List<Constraint> additionalConstraints) {
+        return replan(discovery, newIntent, keptPrefix, additionalConstraints, null);
+    }
+
+    /**
+     * Re-plan with optional user preference.
+     */
+    public PlanningResult replan(DiscoveryAgent.DiscoveryResult discovery,
+                                 UserIntent newIntent, List<Route.RouteSegment> keptPrefix,
+                                 List<Constraint> additionalConstraints, UserPreference preference) {
         log.info("PlanningAgent re-planning with {} kept prefix POIs", keptPrefix.size());
 
         // Remove kept POIs from candidates to avoid duplicates
@@ -104,7 +121,7 @@ public class PlanningAgent {
         var modifiedDiscovery = new DiscoveryAgent.DiscoveryResult(
                 remainingCandidates, discovery.categorizedPOIs(), newIntent);
 
-        var result = plan(modifiedDiscovery, newIntent, additionalConstraints);
+        var result = plan(modifiedDiscovery, newIntent, additionalConstraints, preference);
 
         // Prepend kept prefix to each route
         if (!keptPrefix.isEmpty()) {

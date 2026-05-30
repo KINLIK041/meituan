@@ -11,6 +11,9 @@ public class SessionEntity {
     @Column(length = 50)
     private String id;
 
+    @Column(name = "user_id", length = 50)
+    private String userId;
+
     @Column(name = "intent_json", columnDefinition = "TEXT")
     private String intentJson;
 
@@ -22,8 +25,9 @@ public class SessionEntity {
 
     public SessionEntity() {}
 
-    public SessionEntity(String id, String intentJson, Instant createdAt, Instant updatedAt) {
+    public SessionEntity(String id, String userId, String intentJson, Instant createdAt, Instant updatedAt) {
         this.id = id;
+        this.userId = userId;
         this.intentJson = intentJson;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -42,6 +46,10 @@ public class SessionEntity {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+
     public String getIntentJson() { return intentJson; }
     public void setIntentJson(String intentJson) { this.intentJson = intentJson; }
     public Instant getCreatedAt() { return createdAt; }

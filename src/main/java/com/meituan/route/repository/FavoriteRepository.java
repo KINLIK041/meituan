@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface FavoriteRepository extends JpaRepository<FavoriteEntity, Long> {
     List<FavoriteEntity> findAllByOrderByCreatedAtDesc();
+    List<FavoriteEntity> findByUserIdOrderByCreatedAtDesc(String userId);
 }

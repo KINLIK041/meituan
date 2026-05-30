@@ -20,6 +20,9 @@ public class FavoriteEntity {
     @Column(name = "scene", length = 100)
     private String scene;
 
+    @Column(name = "user_id", length = 50)
+    private String userId;
+
     @Column(name = "poi_count")
     private Integer poiCount = 0;
 
@@ -50,6 +53,9 @@ public class FavoriteEntity {
 
     public String getScene() { return scene; }
     public void setScene(String scene) { this.scene = scene; }
+
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 
     public Integer getPoiCount() { return poiCount; }
     public void setPoiCount(Integer poiCount) { this.poiCount = poiCount; }

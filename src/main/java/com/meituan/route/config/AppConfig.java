@@ -56,9 +56,16 @@ public class AppConfig {
     @Bean
     public CorsWebFilter corsWebFilter() {
         var config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        // Restrict to production domain + local development
+        config.setAllowedOriginPatterns(List.of(
+                "http://47.239.206.163",
+                "http://47.239.206.163:*",
+                "http://localhost:*",
+                "http://127.0.0.1:*"
+        ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
         config.setMaxAge(3600L);
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

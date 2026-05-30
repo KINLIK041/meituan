@@ -2,66 +2,198 @@
 
 const { useState: useStateChat, useEffect: useEffectChat, useRef: useRefChat } = React;
 
-// ─── Top bar ───────────────────────────────────────────────────
-function ChatTopBar({ city, onCityClick, onOpenHistory, historyCount, onOpenFavorites }) {
+// ─── Top bar (redesigned: icon-forward, minimal text) ──────────
+function ChatTopBar({ city, onCityClick, onMenuClick, onNewChat, title }) {
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center',
-      padding: '10px 14px', background: '#F7F7F8',
-      borderBottom: '1px solid rgba(0,0,0,0.04)', minHeight: 44,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '10px 14px', background: '#FBFBFD',
+      borderBottom: '1px solid rgba(0,0,0,0.04)',
     }}>
-      {/* Left: city selector */}
-      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      {/* Left: hamburger menu */}
+      <button onClick={onMenuClick} style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0,
+      }}>
+        <Icon name="Menu" size={22} color="#1A1A1A" />
+      </button>
+
+      {/* Center: title + city */}
+      <div style={{ textAlign: 'center', flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 17, color: '#1A1A1A' }}>
+          {title || '路线助手'}
+        </div>
         <button onClick={onCityClick} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          background: '#fff', border: '1px solid #E8E8EA', borderRadius: 20,
-          cursor: 'pointer', padding: '5px 12px', color: '#1a1a1a', fontSize: 13, fontWeight: 500,
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 11, color: '#8E8E93', fontWeight: 500,
+          display: 'inline-flex', alignItems: 'center', gap: 2,
+          padding: '2px 0 0', fontFamily: 'inherit',
         }}>
-          <Icon name="MapPin" size={13} color="#FF6633" />
-          <span>{city || '北京'}</span>
-          <Icon name="ChevronDown" size={12} color="#8e8e93" />
+          <Icon name="MapPin" size={9} color="#C0C0C8" />
+          {city || '北京'}
         </button>
       </div>
 
-      {/* Center: title */}
-      <div style={{ fontWeight: 700, fontSize: 17, color: '#1a1a1a', textAlign: 'center', letterSpacing: -0.3 }}>
-        路线助手
-      </div>
-
-      {/* Right: icon buttons — Dianping style */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
-        <button onClick={onOpenFavorites} style={{
-          width: 34, height: 34, borderRadius: 999,
-          background: '#fff', border: '1px solid #E8E8EA',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 0, lineHeight: 0,
-        }}>
-          <Icon name="Bookmark" size={16} color="#1d1d1f" />
-        </button>
-        <button onClick={onOpenHistory} style={{
-          position: 'relative',
-          width: 34, height: 34, borderRadius: 999,
-          background: '#fff', border: '1px solid #E8E8EA',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 0, lineHeight: 0,
-        }}>
-          <Icon name="Clock" size={16} color="#1d1d1f" />
-          {historyCount > 0 && (
-            <span className="num" style={{
-              position: 'absolute', top: -2, right: -4,
-              minWidth: 14, height: 14, padding: '0 4px',
-              background: '#FF6633', color: '#fff',
-              fontSize: 9, fontWeight: 700,
-              borderRadius: 999,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              lineHeight: 1,
-            }}>{historyCount}</span>
-          )}
-        </button>
-      </div>
+      {/* Right: new chat */}
+      <button onClick={onNewChat} style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0,
+      }}>
+        <Icon name="SquarePen" size={20} color="#1A1A1A" />
+      </button>
     </div>);
+}
 
+// ─── Sidebar ────────────────────────────────────────────────────
+function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistory, favorites, onOpenDetail, city, onCityChange }) {
+  var [favList, setFavList] = useStateChat([]);
+  useEffectChat(function() {
+    if (open && window.getFavorites) {
+      window.getFavorites().then(function(f) { setFavList(f || []); }).catch(function() {});
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div>
+      <div onClick={onClose} style={{
+        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)',
+        zIndex: 100,
+      }} />
+      <div style={{
+        position: 'absolute', top: 0, left: 0, bottom: 0,
+        width: 285, background: '#FFF', zIndex: 101,
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '8px 0 40px rgba(0,0,0,0.06)',
+        animation: 'slideInLeft 0.22s ease-out',
+      }}>
+        {/* User profile card */}
+        <div style={{ padding: '24px 18px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 16,
+              background: 'linear-gradient(135deg, #FFE4D0, #FFC8AA)',
+              color: '#E94A1A', fontSize: 20, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, boxShadow: '0 2px 8px rgba(233,74,26,0.12)',
+            }}>
+              {currentUser ? currentUser.name.charAt(0) : '?'}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1A1A' }}>
+                {currentUser ? currentUser.name : '未登录'}
+              </div>
+              <div style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>
+                {currentUser && currentUser.profileName ? currentUser.profileName : city}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* New chat button */}
+        <div style={{ padding: '0 18px 16px' }}>
+          <button onClick={function() { onClose(); }} style={{
+            width: '100%', padding: '11px 0',
+            background: '#FF6633', color: '#fff', border: 'none',
+            borderRadius: 14, fontSize: 14, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            boxShadow: '0 2px 12px rgba(255,102,51,0.25)',
+          }}>
+            <Icon name="Plus" size={16} color="#fff" /> 新对话
+          </button>
+        </div>
+
+        {/* City picker */}
+        <div style={{ display: 'flex', gap: 8, padding: '0 18px', marginBottom: 18 }}>
+          {['北京', '上海'].map(function(c) { return (
+            <button key={c} onClick={function() { if (onCityChange) onCityChange(c); }} style={{
+              flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 600,
+              color: city === c ? '#FF6633' : '#8E8E93',
+              background: city === c ? '#FFF5F0' : '#F7F7F8',
+              border: city === c ? '1.5px solid #FFC8AA' : '1px solid transparent',
+              borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}>{c}</button>
+          );})}
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: '#F0F0F3', margin: '0 18px' }} />
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+          {/* Favorites */}
+          {favList.length > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93', marginBottom: 10, letterSpacing: 0.3 }}>
+                <Icon name="Bookmark" size={13} color="#8E8E93" style={{ marginRight: 5 }} />收藏
+              </div>
+              {favList.slice(0, 8).map(function(f) { return (
+                <div key={f.id} onClick={function() {
+                  try { var route = JSON.parse(f.routeJson); if (onOpenDetail) onOpenDetail(route); onClose(); } catch(e) {}
+                }} style={{
+                  padding: '11px 14px', cursor: 'pointer', borderRadius: 12,
+                  background: '#F9F9FB', marginBottom: 6,
+                  border: '1px solid #F0F0F3', transition: 'all 0.15s',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.routeName || '路线'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 3 }}>{f.totalTime || ''} · ¥{f.totalCost || 0}</div>
+                </div>
+              );})}
+            </div>
+          )}
+
+          {/* History */}
+          {history && history.length > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93', marginBottom: 10, letterSpacing: 0.3 }}>
+                <Icon name="Clock" size={13} color="#8E8E93" style={{ marginRight: 5 }} />历史对话
+              </div>
+              {history.slice(0, 12).map(function(h, i) { return (
+                <div key={i} onClick={function() { if (onReplayHistory) onReplayHistory(i); onClose(); }} style={{
+                  padding: '11px 14px', cursor: 'pointer', borderRadius: 12,
+                  background: '#F9F9FB', marginBottom: 6,
+                  border: '1px solid #F0F0F3', transition: 'all 0.15s',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {h.scene || '对话'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 3 }}>{h.firstQuery ? h.firstQuery.substring(0, 28) : h.timeLabel}</div>
+                </div>
+              );})}
+            </div>
+          )}
+        </div>
+
+        {/* Logout */}
+        <div style={{ padding: '12px 18px 18px' }}>
+          <button onClick={function() { if (onLogout) onLogout(); onClose(); }} style={{
+            width: '100%', padding: '11px 0',
+            background: '#FFF', border: '1.5px solid #EDEDEF', borderRadius: 14,
+            fontSize: 13, fontWeight: 600, color: '#8E8E93',
+            cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+            <Icon name="LogOut" size={14} color="#8E8E93" /> 退出登录
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 // ─── City picker bottom sheet ──────────────────────────────────
@@ -119,12 +251,12 @@ function CityPickerSheet({ open, currentCity, onSelect, onClose }) {
 
 // ─── Welcome panel (initial state) ─────────────────────────────
 const QUICK_CARDS = [
-{ label: '朋友聚会', icon: 'Users', hint: '好吃 · 好聊' },
-{ label: '情侣约会', icon: 'Heart', hint: '安静 · 出片' },
-{ label: '一个人放松', icon: 'Coffee', hint: '咖啡 · 书店' },
-{ label: '亲子遛娃', icon: 'Baby', hint: '室内 · 安全' },
-{ label: '下班回血', icon: 'Soup', hint: '快吃 · 暖胃' },
-{ label: '临时救场', icon: 'Zap', hint: '附近 · 立刻' }];
+{ label: '朋友聚会', icon: 'Users', hint: '好吃好聊', bg: '#FFF1E5', fg: '#E94A1A' },
+{ label: '情侣约会', icon: 'Heart', hint: '安静出片', bg: '#FDE8E8', fg: '#C53030' },
+{ label: '一个人放松', icon: 'Coffee', hint: '咖啡书店', bg: '#E8F4E8', fg: '#2F855A' },
+{ label: '亲子遛娃', icon: 'Baby', hint: '遛娃乐园', bg: '#FEF3E2', fg: '#C05621' },
+{ label: '下班回血', icon: 'Soup', hint: '快吃暖胃', bg: '#E6EEF8', fg: '#2456a6' },
+{ label: '临时救场', icon: 'Zap', hint: '附近立刻', bg: '#F3E5F5', fg: '#7B1FA2' }];
 
 
 // Card tint mapping — peach / green / blue cycle, matches the home mock.
@@ -141,62 +273,52 @@ window.CARD_TINTS = CARD_TINTS;
 
 function WelcomeBlock({ onPickScene }) {
   return (
-    <div className="fade-up" style={{ padding: '14px 18px 0' }}>
-      {/* Hero */}
-      <div style={{ marginBottom: 26 }}>
+    <div className="fade-up" style={{ padding: '20px 18px 0' }}>
+      {/* Hero — simplified */}
+      <div style={{ marginBottom: 32, textAlign: 'center' }}>
         <h1 style={{
-          margin: 0,
-          fontSize: 28, fontWeight: 700, color: '#1a1a1a',
-          letterSpacing: -0.5, lineHeight: 1.2, marginBottom: 10,
-        }}>不知道去哪？</h1>
+          margin: 0, fontSize: 26, fontWeight: 800, color: '#1A1A1A',
+          letterSpacing: -1, lineHeight: 1.1, marginBottom: 8,
+        }}>今天去哪？</h1>
         <p style={{
-          margin: 0, fontSize: 13.5, color: '#6E6E73',
-          lineHeight: 1.65,
+          margin: 0, fontSize: 14, color: '#8E8E93', lineHeight: 1.5,
         }}>
-          先选一个场景，或直接输入需求<br/>
-          我会帮你补齐时间、地点和预算，生成一条可直接出发的路线
+          选一个场景，或直接说出你的需求
         </p>
       </div>
 
-      {/* Section label */}
+      {/* Scene grid — large icon cards */}
       <div style={{
-        marginBottom: 4,
-        fontSize: 15, fontWeight: 600, color: '#1a1a1a',
-      }}>常见场景</div>
-      <div style={{ fontSize: 12, color: '#8e8e93', marginBottom: 14 }}>
-        也可以直接在下方输入需求
-      </div>
-
-      {/* Scene grid */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 22,
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10,
       }}>
-        {QUICK_CARDS.map((c, i) => {
-          const tint = CARD_TINTS[i % CARD_TINTS.length];
+        {QUICK_CARDS.map(function(c) {
           return (
-            <button key={c.label} onClick={() => onPickScene(c.label)} style={{
-              background: '#fff', border: '1px solid #EDEDEF', borderRadius: 14,
-              padding: '14px 14px', textAlign: 'left', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column', gap: 10, minHeight: 116,
+            <button key={c.label} onClick={function() { onPickScene(c.label); }} style={{
+              background: '#fff', border: '1px solid #EDEDEF', borderRadius: 16,
+              padding: '20px 16px', textAlign: 'center', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
               transition: 'all 0.15s', fontFamily: 'inherit',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
             }}>
               <div style={{
-                width: 34, height: 34, borderRadius: 10,
-                background: tint.bg,
+                width: 56, height: 56, borderRadius: 16,
+                background: c.bg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Icon name={c.icon} size={17} color={tint.fg} />
+                <Icon name={c.icon} size={28} color={c.fg} />
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1a1a1a', marginBottom: 4 }}>{c.label}</div>
-                <div style={{ fontSize: 12.5, color: '#8e8e93' }}>{c.hint}</div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: '#1A1A1A', marginBottom: 2 }}>
+                  {c.label}
+                </div>
+                <div style={{ fontSize: 12, color: '#8E8E93' }}>{c.hint}</div>
               </div>
             </button>
           );
         })}
       </div>
-    </div>);
-
+    </div>
+  );
 }
 
 // ─── User bubble ───────────────────────────────────────────────
@@ -447,42 +569,96 @@ function RouteCard({ onOpenDetail, onNav, onAdjust, onChip }) {
 
 // ─── Composer ──────────────────────────────────────────────────
 function Composer({ value, onChange, onSend, placeholder }) {
+  const [voiceMode, setVoiceMode] = useStateChat(false);
+  const [recording, setRecording] = useStateChat(false);
+
   return (
     <div style={{
       position: 'absolute', bottom: 0, left: 0, right: 0,
       background: 'linear-gradient(180deg, rgba(247,247,248,0) 0%, #F7F7F8 22%)',
-      padding: '20px 12px 26px', zIndex: 20
+      padding: '12px 10px 22px', zIndex: 20
     }}>
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: 8,
-        background: '#fff', border: '1px solid #EDEDEF', borderRadius: 22,
-        padding: '6px 6px 6px 14px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-      }}>
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder || '告诉我你想去哪、和谁、预算多少…'}
-          rows={1}
-          style={{
-            flex: 1, border: 'none', outline: 'none', resize: 'none',
-            fontSize: 14, lineHeight: 1.5, fontFamily: 'inherit',
-            padding: '7px 0', maxHeight: 80, background: 'transparent',
-            color: '#1a1a1a'
-          }} />
-        <button onClick={onSend} disabled={!value.trim()} style={{
-          width: 34, height: 34, borderRadius: 999,
-          background: value.trim() ? '#FF6633' : '#E5E5E7',
-          border: 'none', cursor: value.trim() ? 'pointer' : 'default',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'all 0.15s'
+      {voiceMode ? (
+        /* Voice mode */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={function() { setVoiceMode(false); }} style={{
+            width: 44, height: 44, borderRadius: 22,
+            background: '#fff', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          }}>
+            <Icon name="Keyboard" size={20} color="#48484A" />
+          </button>
+          <button
+            onMouseDown={function() { setRecording(true); }}
+            onMouseUp={function() { setRecording(false); window.showToast && window.showToast('语音识别开发中'); }}
+            onMouseLeave={function() { setRecording(false); }}
+            style={{
+              flex: 1, padding: '16px', borderRadius: 22,
+              background: recording ? '#FF6633' : '#fff',
+              border: 'none', cursor: 'pointer',
+              fontSize: 15, fontWeight: 600, color: recording ? '#fff' : '#8E8E93',
+              fontFamily: 'inherit', textAlign: 'center',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+              transition: 'all 0.15s',
+            }}>
+            {recording ? '松开结束' : '按住说话'}
+          </button>
+        </div>
+      ) : (
+        /* Keyboard mode — borderless floating */
+        <div style={{
+          background: '#fff', borderRadius: 24,
+          padding: '8px 8px 6px 14px',
+          boxShadow: '0 2px 20px rgba(0,0,0,0.06)',
         }}>
-          <Icon name="ArrowUp" size={17} color="#fff" strokeWidth={2.5} />
-        </button>
-      </div>
+          <textarea value={value}
+            onChange={function(e) { onChange(e.target.value); }}
+            placeholder={placeholder || '告诉我你想去哪、和谁、预算多少…'}
+            rows={1}
+            style={{
+              width: '100%', border: 'none', outline: 'none', resize: 'none',
+              fontSize: 14, lineHeight: 1.5, fontFamily: 'inherit',
+              padding: '6px 0 4px', maxHeight: 80, background: 'transparent',
+              color: '#1a1a1a', boxSizing: 'border-box',
+            }} />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            paddingTop: 4,
+          }}>
+            <button onClick={function() { setVoiceMode(true); }} style={{
+              width: 36, height: 36, borderRadius: 20,
+              background: '#fff', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+              marginLeft: -2,
+            }}>
+              <Icon name="Mic" size={17} color="#8E8E93" />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button onClick={function() { window.showToast && window.showToast('上传/拍照功能开发中'); }} style={{
+                width: 36, height: 36, borderRadius: 20,
+                background: '#fff', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0, boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+              }}>
+                <Icon name="PlusCircle" size={18} color="#8E8E93" />
+              </button>
+              <button onClick={onSend} disabled={!value.trim()} style={{
+                width: 36, height: 36, borderRadius: 20,
+                background: value.trim() ? '#FF6633' : '#F2F2F7',
+                border: 'none', cursor: value.trim() ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all 0.15s',
+                boxShadow: value.trim() ? '0 2px 10px rgba(255,102,51,0.3)' : 'none',
+              }}>
+                <Icon name="ArrowUp" size={16} color={value.trim() ? '#fff' : '#C7C7CC'} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>);
-
 }
 
 // ─── Branch-aware summary node above the route output ──────────
@@ -521,8 +697,10 @@ function ChatScreen({
   onAddMore, onOpenDetail, onNav, onAdjust, onSwap, onChip,
   history, historyOpen, onOpenHistory, onCloseHistory, onReplayHistory, onNewConversation,
   city, onCityChange,
+  currentUser, onUserChange, onLogout,
 }) {
   const [input, setInput] = useStateChat('');
+  const [sidebarOpen, setSidebarOpen] = useStateChat(false);
   const [cityPickerOpen, setCityPickerOpen] = useStateChat(false);
   const [favoritesOpen, setFavoritesOpen] = useStateChat(false);
   const [shareOpen, setShareOpen] = useStateChat(false);
@@ -542,12 +720,15 @@ function ChatScreen({
     return () => { delete window._setShareOpen; };
   }, []);
 
-  // auto-scroll to bottom on new messages
+  // auto-scroll to top only on new conversation entry (welcome/completing/followup/conflict)
+  // — NOT on route adjustments (stage stays 'route')
+  var prevStageRef = useRefChat(null);
   useEffectChat(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight + 200;
+    if (scrollRef.current && chatState.stage !== 'route' && chatState.stage !== 'generating') {
+      scrollRef.current.scrollTop = 0;
     }
-  }, [chatState.stage, chatState.userText, Object.keys(chatState.answers || {}).length]);
+    prevStageRef.current = chatState.stage;
+  }, [chatState.stage, chatState.userText]);
 
   const handleSendInput = () => {
     if (!input.trim()) return;
@@ -567,9 +748,21 @@ function ChatScreen({
       <ChatTopBar
         city={city}
         onCityClick={() => setCityPickerOpen(true)}
-        onOpenHistory={onOpenHistory}
-        historyCount={(history || []).length}
-        onOpenFavorites={() => setFavoritesOpen(true)}
+        onMenuClick={() => setSidebarOpen(true)}
+        onNewChat={onNewConversation || (function() { window.location.reload(); })}
+      />
+
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        currentUser={currentUser}
+        onLogout={onLogout}
+        history={history}
+        onReplayHistory={onReplayHistory}
+        favorites={null}
+        onOpenDetail={onOpenDetail}
+        city={city}
+        onCityChange={onCityChange}
       />
 
       <CityPickerSheet
@@ -705,7 +898,7 @@ function ChatScreen({
           </>
         )}
 
-        <div style={{ height: 40 }} />
+        <div style={{ height: 20 }} />
       </div>
 
       <Composer
@@ -742,4 +935,107 @@ function ChatScreen({
   );
 }
 
-Object.assign(window, { ChatScreen, ChatTopBar, CityPickerSheet, CITIES });
+// ─── User picker bottom sheet (visual card style) ──────────────
+function UserPickerSheet({ open, currentUser, onSelect, onClose, onAddUser }) {
+  const [profiles, setProfiles] = useStateChat([]);
+
+  var customColors = [
+    { bg: '#E8EAF6', fg: '#3F51B5' },
+    { bg: '#F3E5F5', fg: '#7B1FA2' },
+    { bg: '#E0F2F1', fg: '#00695C' },
+  ];
+
+  useEffectChat(() => {
+    if (open) {
+      // Load mock profiles + custom users
+      var p1 = window.getUserProfiles ? window.getUserProfiles() : Promise.resolve([]);
+      Promise.resolve(p1).then(function(mock) {
+        var custom = [];
+        try { custom = JSON.parse(localStorage.getItem('_customUsers') || '[]'); } catch(e) {}
+        setProfiles([].concat(mock || [], custom));
+      });
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  function getAvatarStyle(p) {
+    if (p.isCustom) {
+      var ci = (p.avatarIdx || 0) % customColors.length;
+      return customColors[ci];
+    }
+    if (p.userId === 'user_001') return { bg: '#FDE8E8', fg: '#C53030', label: '约会' };
+    if (p.userId === 'user_002') return { bg: '#E8F4E8', fg: '#2F855A', label: '效率' };
+    if (p.userId === 'user_003') return { bg: '#FEF3E2', fg: '#C05621', label: '探店' };
+    return { bg: '#EDEDEF', fg: '#8E8E93', label: '' };
+  }
+
+  return (
+    <div onClick={onClose} className="fade-up" style={{
+      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
+      zIndex: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{
+        width: '100%', maxWidth: 420, background: '#fff',
+        borderRadius: '20px 20px 0 0', overflow: 'hidden',
+        animation: 'slideUp 0.28s ease-out', paddingBottom: 34,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
+          <div style={{ width: 32, height: 4, borderRadius: 999, background: '#D1D1D6' }} />
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', padding: '8px 0 16px', color: '#1A1A1A' }}>
+          切换用户
+        </div>
+
+        {/* Cards grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 16px' }}>
+          {/* Profile cards */}
+          {profiles.map(function(p) {
+            var av = getAvatarStyle(p);
+            var isActive = currentUser && currentUser.userId === p.userId;
+            return (
+              <div key={p.userId} onClick={function() { onSelect(p); }} style={{
+                padding: '16px 12px', borderRadius: 14,
+                background: isActive ? '#FFF7F0' : '#F7F7F8',
+                border: isActive ? '2px solid #FFC8AA' : '2px solid transparent',
+                cursor: 'pointer', textAlign: 'center',
+                position: 'relative',
+              }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 14,
+                  background: av.bg, color: av.fg,
+                  fontSize: 20, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 8px',
+                }}>{p.name.charAt(0)}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A' }}>{p.name}</div>
+                {av.label && (
+                  <span style={{
+                    display: 'inline-block', marginTop: 4,
+                    fontSize: 10, fontWeight: 500, color: av.fg,
+                    background: av.bg, padding: '2px 6px', borderRadius: 6,
+                  }}>{av.label}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add account */}
+        <button onClick={function() { onAddUser ? onAddUser() : onSelect(null); }} style={{
+          margin: '16px 16px 0', width: 'calc(100% - 32px)',
+          padding: '12px', borderRadius: 12,
+          background: '#FF6633', color: '#fff', border: 'none',
+          fontSize: 15, fontWeight: 600, cursor: 'pointer',
+          fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          <Icon name="UserPlus" size={18} color="#fff" />
+          创建新用户
+        </button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ChatScreen, ChatTopBar, CityPickerSheet, Sidebar, CITIES });

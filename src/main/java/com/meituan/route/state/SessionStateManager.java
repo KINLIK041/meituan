@@ -46,12 +46,16 @@ public class SessionStateManager {
     }
 
     public String createSession() {
+        return createSession(null);
+    }
+
+    public String createSession(String userId) {
         String id = "sess_" + UUID.randomUUID().toString().substring(0, 8);
         var now = Instant.now();
-        sessions.put(id, new Session(id, new ArrayList<>(), null, now, now));
+        sessions.put(id, new Session(id, userId, new ArrayList<>(), null, now, now));
 
         try {
-            sessionRepository.save(new SessionEntity(id, null, now, now));
+            sessionRepository.save(new SessionEntity(id, userId, null, now, now));
         } catch (Exception e) {
             log.warn("Failed to persist session to DB: {}", e.getMessage());
         }
@@ -70,7 +74,7 @@ public class SessionStateManager {
                 var snapshots = loadSnapshots(sessionId);
                 var intent = entity.get().getIntentJson() != null
                     ? parseIntent(entity.get().getIntentJson()) : null;
-                var restored = new Session(sessionId, snapshots, intent,
+                var restored = new Session(sessionId, entity.get().getUserId(), snapshots, intent,
                     entity.get().getCreatedAt(), entity.get().getUpdatedAt());
                 sessions.put(sessionId, restored);
                 return Optional.of(restored);
@@ -105,12 +109,12 @@ public class SessionStateManager {
                     toJson(routes.get(i)), intent != null ? toJson(intent) : null));
         }
 
-        var updated = new Session(sessionId, newSnapshots, intent, session.createdAt(), Instant.now());
+        var updated = new Session(sessionId, session.userId(), newSnapshots, intent, session.createdAt(), Instant.now());
         sessions.put(sessionId, updated);
 
         try {
             snapshotRepository.saveAll(entities);
-            sessionRepository.save(new SessionEntity(sessionId,
+            sessionRepository.save(new SessionEntity(sessionId, session.userId(),
                     intent != null ? toJson(intent) : null,
                     session.createdAt(), Instant.now()));
         } catch (Exception e) {
@@ -121,7 +125,7 @@ public class SessionStateManager {
     public void updateIntent(String sessionId, UserIntent intent) {
         var session = sessions.get(sessionId);
         if (session != null) {
-            sessions.put(sessionId, new Session(sessionId, session.snapshots(), intent,
+            sessions.put(sessionId, new Session(sessionId, session.userId(), session.snapshots(), intent,
                     session.createdAt(), Instant.now()));
         }
     }
@@ -235,6 +239,7 @@ public class SessionStateManager {
 
     public record Session(
             String sessionId,
+            String userId,
             List<Snapshot> snapshots,
             UserIntent currentIntent,
             Instant createdAt,

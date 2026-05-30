@@ -61,13 +61,48 @@ const INITIAL_STATE = {
 function App() {
   const [page, setPage] = useStateApp('chat');
   const [chatState, setChatState] = useStateApp(INITIAL_STATE);
-  const [history, setHistory] = useStateApp([]); // top-right history panel data
+  const [history, setHistory] = useStateApp([]);
   const [historyOpen, setHistoryOpen] = useStateApp(false);
   const [toast, setToast] = useStateApp(null);
   const [city, setCity] = useStateApp('北京');
+  const [currentUser, setCurrentUser] = useStateApp(null);
 
-  // Sync city to global window for cross-component access (e.g. route builder)
+  // Sync city and user to global window
   useEffectApp(() => { window._currentCity = city; }, [city]);
+  useEffectApp(() => { window._currentUserId = currentUser ? currentUser.userId : null; }, [currentUser]);
+
+  // Auth gate: must login before using the product
+  const [showLogin, setShowLogin] = useStateApp(true);
+  const [authChecked, setAuthChecked] = useStateApp(false);
+  useEffectApp(() => {
+    var authUser = null;
+    var token = null;
+    try {
+      authUser = JSON.parse(localStorage.getItem('_authUser') || 'null');
+      token = localStorage.getItem('_authToken');
+    } catch(e) {}
+    if (authUser && authUser.userId && token) {
+      // Validate token with backend
+      fetch((window.API_BASE || '') + '/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      }).then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.success) {
+            setCurrentUser(authUser);
+            setShowLogin(false);
+          }
+          setAuthChecked(true);
+        })
+        .catch(function() {
+          // Backend not reachable — still allow login with cached token
+          setCurrentUser(authUser);
+          setShowLogin(false);
+          setAuthChecked(true);
+        });
+    } else {
+      setAuthChecked(true);
+    }
+  }, []);
 
   // Save current conversation to history (called when user starts a new one).
   // Records at the conversation level, not per-route.
@@ -432,6 +467,12 @@ function App() {
     });
     setHistoryOpen(false);
   };
+
+  const handleLogout = () => {
+    try { localStorage.removeItem('_authToken'); localStorage.removeItem('_authUser'); } catch(e) {}
+    setCurrentUser(null);
+    setShowLogin(true);
+  };
   const handleReplayHistory = (idx) => {
     const entry = history[idx];
     if (!entry) return;
@@ -458,11 +499,44 @@ function App() {
           position: 'absolute', top: 47, left: 0, right: 0, bottom: 0,
           overflow: 'hidden',
         }}>
+          {/* Loading while checking auth */}
+          {!authChecked && (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FBFBFD' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 16, background: '#FFF1E5', margin: '0 auto 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 24 }}>...</span>
+                </div>
+                <div style={{ fontSize: 14, color: '#8E8E93' }}>加载中...</div>
+              </div>
+            </div>
+          )}
+
+          {/* Login gate */}
+          {authChecked && !currentUser && window.LoginModal && (
+            <window.LoginModal
+              open={showLogin}
+              onLogin={function(user) {
+                if (user) {
+                  setCurrentUser(user);
+                  if (user.preferredCity) setCity(user.preferredCity);
+                }
+                setShowLogin(false);
+              }}
+            />
+          )}
+
+          {/* Main app — only when authenticated */}
+          {!authChecked || !currentUser ? null : (
+          <div style={{ display: 'contents' }}>
           {page === 'chat' && (
             <ChatScreen
               chatState={chatState}
               city={city}
               onCityChange={setCity}
+              currentUser={currentUser}
+              onUserChange={setCurrentUser}
+              onLogout={handleLogout}
               onSend={handleSend}
               onPickScene={handlePickScene}
               onAnswer={handleAnswer}
@@ -494,6 +568,7 @@ function App() {
               setToast={setToast}
             />
           )}
+          </div>)}
         </div>
       </IOSDevice>
     </PhoneStage>

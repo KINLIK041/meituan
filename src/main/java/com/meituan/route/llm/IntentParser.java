@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 @Component
 public class IntentParser {
 
+
     private static final Logger log = LoggerFactory.getLogger(IntentParser.class);
 
     private final ChatLanguageModel chatModel;
@@ -52,11 +53,11 @@ public class IntentParser {
             Map.entry("轻食", "RESTAURANT"), Map.entry("沙拉", "RESTAURANT"),
             Map.entry("景点", "ATTRACTION"), Map.entry("玩", "ATTRACTION"), Map.entry("公园", "ATTRACTION"),
             Map.entry("园林", "ATTRACTION"), Map.entry("爬山", "ATTRACTION"), Map.entry("登山", "ATTRACTION"),
-            Map.entry("电影", "ENTERTAINMENT"), Map.entry("酒吧", "ENTERTAINMENT"), Map.entry("娱乐", "ENTERTAINMENT"),
-            Map.entry("喝酒", "ENTERTAINMENT"), Map.entry("喝一", "ENTERTAINMENT"), Map.entry("喝杯", "ENTERTAINMENT"),
-            Map.entry("喝口", "ENTERTAINMENT"), Map.entry("小酌", "ENTERTAINMENT"), Map.entry("精酿", "ENTERTAINMENT"),
-            Map.entry("居酒屋", "ENTERTAINMENT"), Map.entry("KTV", "ENTERTAINMENT"), Map.entry("唱歌", "ENTERTAINMENT"),
+            Map.entry("电影", "ENTERTAINMENT"), Map.entry("KTV", "ENTERTAINMENT"), Map.entry("唱歌", "ENTERTAINMENT"),
             Map.entry("演出", "ENTERTAINMENT"), Map.entry("livehouse", "ENTERTAINMENT"), Map.entry("LiveHouse", "ENTERTAINMENT"),
+            Map.entry("酒吧", "RESTAURANT"), Map.entry("喝酒", "RESTAURANT"), Map.entry("喝一", "RESTAURANT"),
+            Map.entry("喝杯", "RESTAURANT"), Map.entry("喝口", "RESTAURANT"), Map.entry("小酌", "RESTAURANT"),
+            Map.entry("精酿", "RESTAURANT"), Map.entry("居酒屋", "RESTAURANT"), Map.entry("娱乐", "RESTAURANT"),
             Map.entry("文化", "CULTURE"), Map.entry("博物馆", "CULTURE"), Map.entry("书店", "CULTURE"),
             Map.entry("艺术", "CULTURE"), Map.entry("美术馆", "CULTURE"), Map.entry("画廊", "CULTURE"),
             Map.entry("展览", "CULTURE"), Map.entry("看展", "CULTURE"), Map.entry("创意园", "CULTURE"),
@@ -92,8 +93,11 @@ public class IntentParser {
             Map.entry("怀柔", "怀柔区"), Map.entry("延庆", "延庆区")
     );
 
-    public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env) {
+    private final DynamicLLMProvider llmProvider;
+
+    public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env, DynamicLLMProvider llmProvider) {
         this.chatModel = chatModel.orElse(null);
+        this.llmProvider = llmProvider;
         this.mockProfile = java.util.Arrays.asList(env.getActiveProfiles()).contains("mock");
         this.llmAvailable = this.chatModel != null;
         log.info("IntentParser initialized (LLM: {}, mock: {})", llmAvailable ? "enabled" : "disabled", mockProfile);
@@ -106,6 +110,58 @@ public class IntentParser {
         return parse(query, sessionId, null);
     }
 
+    private UserIntent parseWithLLM(String query, String sessionId, String cityHint) {
+        return parseWithLLM(query, sessionId, cityHint, null, null, null);
+    }
+
+    private UserIntent parseWithLLM(String query, String sessionId, String cityHint, UserIntent previousIntent) {
+        return parseWithLLM(query, sessionId, cityHint, previousIntent, null, null);
+    }
+
+    private UserIntent parseWithLLM(String query, String sessionId, String cityHint,
+                                     UserIntent previousIntent, String userProvider, String userApiKey) {
+        var exampleCity = (cityHint != null && !cityHint.isBlank()) ? cityHint : "北京";
+        var cityContext = (cityHint != null && !cityHint.isBlank())
+                ? "当前用户所在城市: " + cityHint + "。若查询未明确提到城市，city字段使用此城市。\n"
+                : "";
+
+        var previousContext = "";
+        if (previousIntent != null) {
+            var sb = new StringBuilder();
+            sb.append("\n上一次理解的需求（请保持这些关键约束，除非用户明确要求更改）:\n");
+            sb.append("- 城市: ").append(previousIntent.city()).append("\n");
+            if (previousIntent.district() != null && !previousIntent.district().isBlank())
+                sb.append("- 区域: ").append(previousIntent.district()).append("\n");
+            if (previousIntent.budget() > 0)
+                sb.append("- 预算: 人均¥").append((int) previousIntent.budget()).append("\n");
+            if (previousIntent.preferredCategories() != null && !previousIntent.preferredCategories().isEmpty())
+                sb.append("- 分类: ").append(String.join("、", previousIntent.preferredCategories())).append("\n");
+            if (previousIntent.keywords() != null && !previousIntent.keywords().isEmpty())
+                sb.append("- 关键词: ").append(String.join("、", previousIntent.keywords())).append("\n");
+            if (previousIntent.specialRequest() != null && !previousIntent.specialRequest().isBlank())
+                sb.append("- 特殊要求: ").append(previousIntent.specialRequest()).append("\n");
+            if (previousIntent.cuisinePreference() != null && !previousIntent.cuisinePreference().isBlank())
+                sb.append("- 菜系偏好: ").append(previousIntent.cuisinePreference()).append("\n");
+            previousContext = sb.toString();
+        }
+
+        var prompt = (cityContext + """
+从查询提取JSON（只返回JSON）：
+查询: "%s"%s
+字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认14:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
+示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
+""".formatted(query, previousContext, exampleCity));
+
+        // Use user's own model + API key if provided, otherwise system default
+        var model = (userApiKey != null && !userApiKey.isBlank())
+                ? llmProvider.getModel(userProvider, userApiKey)
+                : chatModel;
+        var json = model.chat(prompt);
+
+        // Parse the JSON response
+        return parseLLMResponse(json, query, sessionId);
+    }
+
     /**
      * Reactive variant: offloads the blocking LLM call to boundedElastic so the
      * event loop is never blocked, even under high concurrency. Use this from
@@ -116,8 +172,18 @@ public class IntentParser {
     }
 
     public Mono<UserIntent> parseAsync(String query, String sessionId, String cityHint) {
+        return parseAsync(query, sessionId, cityHint, null);
+    }
+
+    public Mono<UserIntent> parseAsync(String query, String sessionId, String cityHint, UserIntent previousIntent) {
+        return parseAsync(query, sessionId, cityHint, previousIntent, null, null);
+    }
+
+    /** Parse with optional user-provided LLM API key (from registration). */
+    public Mono<UserIntent> parseAsync(String query, String sessionId, String cityHint,
+                                        UserIntent previousIntent, String userProvider, String userApiKey) {
         if (llmAvailable) {
-            return Mono.fromCallable(() -> parseWithLLM(query, sessionId, cityHint))
+            return Mono.fromCallable(() -> parseWithLLM(query, sessionId, cityHint, previousIntent, userProvider, userApiKey))
                     .subscribeOn(Schedulers.boundedElastic())
                     .onErrorResume(e -> {
                         log.warn("LLM parsing failed, falling back to rules: {}", e.getMessage());
@@ -290,28 +356,6 @@ public class IntentParser {
             case "CULTURE" -> "文化";
             default -> cat;
         };
-    }
-
-    /**
-     * Tier 1: LLM-based parsing via LangChain4j (DeepSeek).
-     * Uses a structured prompt to extract intent fields as JSON.
-     */
-    private UserIntent parseWithLLM(String query, String sessionId, String cityHint) {
-        var exampleCity = (cityHint != null && !cityHint.isBlank()) ? cityHint : "北京";
-        var cityContext = (cityHint != null && !cityHint.isBlank())
-                ? "当前用户所在城市: " + cityHint + "。若查询未明确提到城市，city字段使用此城市。\n"
-                : "";
-        var prompt = (cityContext + """
-从查询提取JSON（只返回JSON）：
-查询: "%s"
-字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认14:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
-示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
-""".formatted(query, exampleCity));
-
-        var json = chatModel.chat(prompt);
-
-        // Parse the JSON response
-        return parseLLMResponse(json, query, sessionId);
     }
 
     private UserIntent parseLLMResponse(String json, String originalQuery, String sessionId) {

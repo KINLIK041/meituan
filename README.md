@@ -824,6 +824,91 @@ curl -X POST http://localhost:8080/api/route/adjust \
 
 ---
 
+## 个性化推荐系统
+
+### 用户认证
+- **强制登录门禁** — 未登录无法使用产品，所有 API 需 JWT Token
+- `POST /api/auth/register` — 注册（昵称、密码、城市、模型提供商、API Key）
+- `POST /api/auth/login` — 登录，返回 JWT Token（72h 有效）
+- `GET /api/auth/me` — 验证 Token 并获取用户信息
+- `GET /api/auth/models` — 获取可用模型提供商列表
+- `AuthFilter` — WebFilter 保护 `/api/route/**` 和 `/api/favorites` 端点
+
+### 多模型 LLM 支持
+注册时可选择 6 家模型提供商，填入自己的 API Key：
+
+| 提供商 | 模型 | 获取 Key |
+|--------|------|---------|
+| DeepSeek | deepseek-chat | platform.deepseek.com |
+| OpenAI | gpt-4o | platform.openai.com |
+| Moonshot 月之暗面 | moonshot-v1-8k | platform.moonshot.cn |
+| 智谱 GLM | glm-4-flash | open.bigmodel.cn |
+| 通义千问 | qwen-plus | dashscope.console.aliyun.com |
+| Anthropic Claude | claude-sonnet-4 | console.anthropic.com |
+
+`DynamicLLMProvider` 按 (providerId, apiKey) 缓存模型实例，用户自己的 Key 调用 LLM。
+
+### 偏好学习
+收藏路线时自动学习用户偏好：
+```
+用户收藏路线 → learnFromFavorite()
+  → 提取路线中 POI 的 tags
+  → 用户 preferenceTags 对应 tag +0.03 权重
+  → 下次规划时 PreferenceScorer 使用更新后的偏好评分
+  → 返回更个性化的"偏好优先方案"
+```
+
+### 用户数据隔离
+- `sessions.user_id` — 每个用户的对话会话独立
+- `routes.user_id` — 路线归属用户
+- `favorites.user_id` — 收藏按用户隔离查询和删除
+- 删除收藏需 `userId` 验权
+
+### 上下文保持
+`ConversationAgent` 在调整路线时加载上一轮的 `UserIntent`（城市、区域、品类、关键词、预算），确保"少走路"等调整不会丢失原始的"喝一杯"需求。详情见 [competition-requirement-implementation.md](./competition-requirement-implementation.md)。
+
+---
+
+## 部署指南
+
+### 环境变量
+
+| 变量 | 必需 | 说明 |
+|------|------|------|
+| `DEEPSEEK_API_KEY` | 是 | 系统默认 LLM API Key（用户可注册自己的覆盖） |
+| `JWT_SECRET` | **生产必需** | JWT 签名密钥，至少 32 字符 |
+| `SPRING_PROFILES_ACTIVE` | 否 | `mock`(默认) / `mysql` |
+
+### 本地开发
+```bash
+export DEEPSEEK_API_KEY=sk-your-key
+set JWT_SECRET=my-super-secret-key-at-least-32-chars!!  # Windows
+mvn spring-boot:run
+```
+
+### Docker 部署
+```bash
+# 1. 创建 .env 文件
+echo "DEEPSEEK_API_KEY=sk-your-key" > .env
+echo "JWT_SECRET=$(openssl rand -base64 48)" >> .env
+
+# 2. 构建启动
+sudo -E docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. 验证
+curl http://localhost/api/route/health
+```
+
+### MySQL 模式
+```bash
+# 1. DataGrip 执行 datagrip-setup.sql
+# 2. 修改 application-mysql.yml 中的数据库密码
+# 3. 启动
+SPRING_PROFILES_ACTIVE=mysql mvn spring-boot:run
+```
+
+---
+
 ## 关于项目组织
 
 - `routeplan/` — Web 前端，纯静态页面，浏览器直接打开

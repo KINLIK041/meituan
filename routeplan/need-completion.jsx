@@ -622,25 +622,24 @@ function RouteOption({ route, index, total, onOpenDetail }) {
         </button>
       </div>
 
-      {/* Kicker — index + positioning (centered WeChat style) */}
+      {/* Kicker — index + positioning (centered, large Dianping style) */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 10, paddingRight: 0, gap: 8,
+        marginBottom: 10, paddingRight: 0, gap: 10,
       }}>
         <span className="num" style={{
-          fontSize: 10.5, color: '#C7C7CC', fontWeight: 500, letterSpacing: 0.5,
+          fontSize: 12, color: '#C7C7CC', fontWeight: 600,
         }}>
-          {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
+          {index + 1}/{total}
         </span>
-        <span style={{ color: '#E5E5E7' }}>·</span>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 7,
-          fontSize: 10.5, color: t.dot, fontWeight: 600,
-          letterSpacing: 1.2, textTransform: 'uppercase',
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontSize: 13, color: t.dot, fontWeight: 700,
+          letterSpacing: 0.5,
         }}>
-          <span style={{ width: 5, height: 5, borderRadius: 999, background: t.dot }} />
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: t.dot }} />
           {route.positioning}
-        </div>
+        </span>
       </div>
 
       {/* Title — centered WeChat style */}
@@ -725,6 +724,29 @@ function RouteOption({ route, index, total, onOpenDetail }) {
         margin: '14px 0 0', fontSize: 13, color: '#1d1d1f',
         lineHeight: 1.7, textWrap: 'pretty',
       }}>{route.reason}</p>
+
+      {/* Preference match badge */}
+      {route._preferenceMatchTags && route._preferenceMatchTags.length > 0 && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px',
+          background: 'linear-gradient(135deg, #F0F7FF 0%, #F5F9FC 100%)',
+          borderRadius: 10, border: '1px solid #D0E4F7',
+        }}>
+          <div style={{ fontSize: 11, color: '#2456a6', marginBottom: 6, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="Sparkles" size={12} color="#2456a6" />
+            匹配你的历史偏好
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {route._preferenceMatchTags.map(function(tag) { return (
+              <span key={tag} style={{
+                background: '#E6EEF8', color: '#2456a6',
+                padding: '2px 8px', borderRadius: 999,
+                fontSize: 11, fontWeight: 500,
+              }}>{tag}</span>
+            );})}
+          </div>
+        </div>
+      )}
 
       {/* Risks — inline, no pills */}
       {route.risks && route.risks.length > 0 && (

@@ -16,20 +16,47 @@ const API_BASE = (function() {
 
 // ─── Fetch with timeout ───────────────────────────────────────────
 
-/** Wraps fetch with an AbortController timeout (default 15s). */
+/** Wraps fetch with an AbortController timeout (default 15s). Adds auth header. */
 function fetchWithTimeout(url, options, timeoutMs) {
   var controller = new AbortController();
   var ms = timeoutMs || 15000;
   var timer = setTimeout(function() { controller.abort(); }, ms);
-  return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+  var opts = Object.assign({}, options, { signal: controller.signal });
+  // Add auth token if available
+  var token = null;
+  try { token = localStorage.getItem('_authToken'); } catch(e) {}
+  if (token) {
+    opts.headers = Object.assign({}, opts.headers || {}, { 'Authorization': 'Bearer ' + token });
+  }
+  return fetch(url, opts)
     .finally(function() { clearTimeout(timer); });
 }
 
 // ─── Session tracking ─────────────────────────────────────────────
 let _sessionId = null;
+let _currentUserId = null;
 
 function getSessionId() { return _sessionId; }
 function setSessionId(id) { _sessionId = id; }
+function getCurrentUserId() { return _currentUserId; }
+function setCurrentUserId(id) { _currentUserId = id; }
+
+// ─── User profiles ────────────────────────────────────────────────
+
+async function getUserProfiles() {
+  try {
+    var res = await fetchWithTimeout(API_BASE + '/api/route/profiles');
+    if (!res.ok) throw new Error('Profiles fetch failed');
+    return await res.json();
+  } catch (e) {
+    // Fallback: hardcoded 3 mock users
+    return [
+      { userId: 'user_001', name: '小林', profileName: '约会偏好型', preferredCity: '上海', avgBudget: 200, favoriteCategories: ['日料','咖啡','展览','西餐'], preferenceTags: { '安静': 0.90, '少排队': 0.85 }, avoidTags: {}, historyActions: [] },
+      { userId: 'user_002', name: '阿航', profileName: '效率通勤型', preferredCity: '北京', avgBudget: 120, favoriteCategories: ['快餐','商场','咖啡','简餐'], preferenceTags: { '少走路': 0.92, '近地铁': 0.88 }, avoidTags: {}, historyActions: [] },
+      { userId: 'user_003', name: 'Mia',   profileName: '探店内容型', preferredCity: '上海', avgBudget: 300, favoriteCategories: ['网红餐厅','甜品','买手店','咖啡'], preferenceTags: { '出片': 0.95, '新店': 0.88 }, avoidTags: {}, historyActions: [] },
+    ];
+  }
+}
 
 // ─── Tone helpers ─────────────────────────────────────────────────
 const GOAL_TONE = {
@@ -97,11 +124,16 @@ function mapRoute(route) {
 /** Map a PlanResponse to the array the frontend RouteOptionsCard expects. */
 function mapPlanResponse(data) {
   const routes = (data.routes || []).map(mapRoute);
-  // Assign tones: first route orange, second pink, third+ green
-  const tones = ['orange', 'pink', 'green'];
+  var tones = ['orange', 'pink', 'green'];
+  var posLabels = _currentUserId
+    ? ['综合最优', '少走路', '偏好优先']
+    : ['综合最优', '更出片', '更稳妥'];
   routes.forEach((r, i) => {
     r.tone = tones[i] || 'green';
-    r.positioning = i === 0 ? '综合最优' : i === 1 ? '体验更强' : '更稳妥';
+    r.positioning = posLabels[i] || '综合最优';
+    if (data.preferenceMatchTags && data.preferenceMatchTags[r.id]) {
+      r._preferenceMatchTags = data.preferenceMatchTags[r.id];
+    }
   });
   return {
     sessionId: data.sessionId,
@@ -121,7 +153,7 @@ function mapPlanResponse(data) {
  */
 async function smartPlan(query, sessionId, city) {
   try {
-    const body = { query: query, sessionId: sessionId || null, city: city || null };
+    const body = { query: query, sessionId: sessionId || null, city: city || null, userId: _currentUserId || null };
     const res = await fetchWithTimeout(API_BASE + '/api/route/smart-plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -135,9 +167,16 @@ async function smartPlan(query, sessionId, city) {
     if (data.routes && data.routes.length > 0) {
       data._routes = data.routes.map(mapRoute);
       var tones = ['orange', 'pink', 'green'];
+      var posLabels = _currentUserId
+        ? ['综合最优', '少走路', '偏好优先']
+        : ['综合最优', '体验更强', '更稳妥'];
       data._routes.forEach(function(r, i) {
         r.tone = tones[i] || 'green';
-        r.positioning = i === 0 ? '综合最优' : i === 1 ? '体验更强' : '更稳妥';
+        r.positioning = posLabels[i] || '综合最优';
+        // Attach preference match data from API response
+        if (data.preferenceMatchTags && data.preferenceMatchTags[r.id]) {
+          r._preferenceMatchTags = data.preferenceMatchTags[r.id];
+        }
       });
     }
 
@@ -167,7 +206,7 @@ async function smartPlan(query, sessionId, city) {
  * @returns {Promise<{sessionId, routes, warning, recommendedRoute}>}
  */
 async function planRoute(query, sessionId, city, intent) {
-  const body = { query: query, sessionId: sessionId || null, city: city || null, intent: intent || null };
+  const body = { query: query, sessionId: sessionId || null, city: city || null, intent: intent || null, userId: _currentUserId || null };
   const res = await fetchWithTimeout(API_BASE + '/api/route/plan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -187,7 +226,7 @@ async function planRoute(query, sessionId, city, intent) {
  * @returns {Promise<{sessionId, routes, warning, recommendedRoute}>}
  */
 async function adjustRoute(sessionId, adjustment, city) {
-  const body = { sessionId: sessionId, adjustment: adjustment, city: city || null };
+  const body = { sessionId: sessionId, adjustment: adjustment, city: city || null, userId: _currentUserId || null };
   const res = await fetchWithTimeout(API_BASE + '/api/route/adjust', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -423,6 +462,7 @@ window._favoritesStore = window._favoritesStore || [];
 var _favIdCounter = 1;
 
 async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, totalCost) {
+  var uid = _currentUserId || null;
   var localEntry = {
     id: 'local-' + (_favIdCounter++),
     routeJson: JSON.stringify(routeData),
@@ -432,12 +472,14 @@ async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, to
     totalTime: totalTime || '',
     totalCost: totalCost || 0,
     createdAt: new Date().toISOString(),
+    userId: uid,
   };
   try {
     var res = await fetchWithTimeout(API_BASE + '/api/favorites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        userId: uid,
         routeJson: localEntry.routeJson,
         routeName: localEntry.routeName,
         scene: localEntry.scene,
@@ -459,7 +501,9 @@ async function saveFavorite(routeData, routeName, scene, poiCount, totalTime, to
 
 async function getFavorites() {
   try {
-    var res = await fetchWithTimeout(API_BASE + '/api/favorites');
+    var uid = _currentUserId || '';
+    var url = API_BASE + '/api/favorites' + (uid ? '?userId=' + encodeURIComponent(uid) : '');
+    var res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error('Fetch failed: ' + res.status);
     var serverData = await res.json();
     // Merge: server data + any local-only entries not yet synced
@@ -482,7 +526,9 @@ async function deleteFavorite(id) {
     if (String(id).indexOf('local-') === 0) {
       return { success: true, id: id };
     }
-    var res = await fetchWithTimeout(API_BASE + '/api/favorites/' + id, { method: 'DELETE' });
+    var uid = _currentUserId || '';
+    var url = API_BASE + '/api/favorites/' + id + (uid ? '?userId=' + encodeURIComponent(uid) : '');
+    var res = await fetchWithTimeout(url, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed: ' + res.status);
     return await res.json();
   } catch (e) {
@@ -495,6 +541,8 @@ async function deleteFavorite(id) {
 Object.assign(window, {
   API_BASE,
   getSessionId, setSessionId,
+  getCurrentUserId, setCurrentUserId,
+  getUserProfiles,
   planRoute, adjustRoute, analyzeIntent, smartPlan,
   buildQueryFromScene,
   planWithFallback, adjustWithFallback, mockAdjustRoutes,

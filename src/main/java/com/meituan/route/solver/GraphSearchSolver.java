@@ -4,6 +4,7 @@ import com.meituan.route.model.Constraint;
 import com.meituan.route.model.POI;
 import com.meituan.route.model.Route;
 import com.meituan.route.model.UserIntent;
+import com.meituan.route.model.UserPreference;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.graph.DefaultWeightedEdge;
@@ -29,7 +30,12 @@ public class GraphSearchSolver {
     private static final double AVG_DRIVE_SPEED_KMH = 25.0;
 
     // Cache travel time estimates
+    private final PreferenceScorer preferenceScorer;
     private final Map<String, Double> travelTimeCache = new ConcurrentHashMap<>();
+
+    public GraphSearchSolver(PreferenceScorer preferenceScorer) {
+        this.preferenceScorer = preferenceScorer;
+    }
 
     /**
      * Generate multiple route plans from candidate POIs.
@@ -39,11 +45,23 @@ public class GraphSearchSolver {
      */
     public List<Route> generatePlans(List<POI> candidates, List<Constraint> constraints,
                                      UserIntent intent, int numPlans) {
+        return generatePlans(candidates, constraints, intent, numPlans, null);
+    }
+
+    /**
+     * Generate route plans with optional user preference for personalization.
+     * When a UserPreference is provided, replaces CHEAPEST goal with PREFERENCE
+     * for a "偏好优先" route.
+     */
+    public List<Route> generatePlans(List<POI> candidates, List<Constraint> constraints,
+                                     UserIntent intent, int numPlans, UserPreference preference) {
         if (candidates.size() < 2) {
             return handleInsufficientPOIs(candidates, intent);
         }
 
-        var goals = List.of("BEST_EXPERIENCE", "FASTEST", "CHEAPEST");
+        var goals = (preference != null && preference.preferenceTags() != null && !preference.preferenceTags().isEmpty())
+                ? List.of("BEST_EXPERIENCE", "FASTEST", "PREFERENCE")
+                : List.of("BEST_EXPERIENCE", "FASTEST", "CHEAPEST");
         var routes = new ArrayList<Route>();
         var usedIds = new HashSet<String>();
 
@@ -51,7 +69,7 @@ public class GraphSearchSolver {
             if (routes.size() >= numPlans) break;
 
             // Build a goal-specific candidate pool — sort by the goal's score
-            var goalCandidates = selectCandidatesForGoal(candidates, goal);
+            var goalCandidates = selectCandidatesForGoal(candidates, goal, preference);
 
             // Remove POIs already heavily used in previous routes to force diversity
             if (!usedIds.isEmpty()) {
@@ -89,6 +107,7 @@ public class GraphSearchSolver {
                 case "BEST_EXPERIENCE" -> "体验最优方案";
                 case "FASTEST" -> "最高效方案";
                 case "CHEAPEST" -> "最省钱方案";
+                case "PREFERENCE" -> "偏好优先方案";
                 default -> "方案" + (idx + 1);
             };
             routes.set(idx, new Route(r.id(), name, generateDescription(r),
@@ -106,22 +125,19 @@ public class GraphSearchSolver {
      * Different goals prioritize different dimensions so each route
      * explores a different region of the POI space.
      */
-    private List<POI> selectCandidatesForGoal(List<POI> candidates, String goal) {
+    private List<POI> selectCandidatesForGoal(List<POI> candidates, String goal, UserPreference preference) {
         var sorted = new ArrayList<>(candidates);
         switch (goal) {
             case "BEST_EXPERIENCE" -> sorted.sort((a, b) -> Double.compare(
                     b.rating() * 20 + b.popularityScore() * 0.3,
                     a.rating() * 20 + a.popularityScore() * 0.3));
             case "FASTEST" -> {
-                // When minimizing walking, cluster POIs by geographic proximity
-                // Compute centroid of all candidates
                 double sumLat = 0, sumLng = 0;
                 for (var p : sorted) { sumLat += p.lat(); sumLng += p.lng(); }
                 double cLat = sumLat / sorted.size(), cLng = sumLng / sorted.size();
                 sorted.sort((a, b) -> {
                     double distA = haversine(a.lat(), a.lng(), cLat, cLng);
                     double distB = haversine(b.lat(), b.lng(), cLat, cLng);
-                    // Prefer POIs closer to centroid (clustered) + short visit + good rating
                     double scoreA = (1.0 / Math.max(0.1, distA)) * 5.0
                             + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3;
                     double scoreB = (1.0 / Math.max(0.1, distB)) * 5.0
@@ -132,6 +148,13 @@ public class GraphSearchSolver {
             case "CHEAPEST" -> sorted.sort((a, b) -> Double.compare(
                     Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5,
                     Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5));
+            case "PREFERENCE" -> {
+                if (preference != null) {
+                    sorted.sort((a, b) -> Double.compare(
+                            preferenceScorer.scorePOI(b, preference) * 10 + b.rating() * 5,
+                            preferenceScorer.scorePOI(a, preference) * 10 + a.rating() * 5));
+                }
+            }
             default -> sorted.sort((a, b) -> Double.compare(
                     b.rating() * 10 + b.popularityScore() * 0.2,
                     a.rating() * 10 + a.popularityScore() * 0.2));
@@ -321,6 +344,7 @@ public class GraphSearchSolver {
             case "BEST_EXPERIENCE" -> poi.rating() * 20 + poi.popularityScore() * 0.3;
             case "FASTEST" -> (100 - poi.visitDuration()) * 0.5 + poi.rating() * 5;
             case "CHEAPEST" -> Math.max(0, 500 - poi.avgCost()) * 0.3 + poi.rating() * 5;
+            case "PREFERENCE" -> poi.rating() * 10 + poi.popularityScore() * 0.2;
             default -> poi.rating() * 10 + poi.popularityScore() * 0.2;
         };
     }

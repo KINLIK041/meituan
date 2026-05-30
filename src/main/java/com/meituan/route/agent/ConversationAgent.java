@@ -39,19 +39,20 @@ public class ConversationAgent {
     }
 
     /**
-     * Reactive entry point: runs the LLM intent parse and the session DB
-     * lookup in parallel via Mono.zip, then assembles the result.
-     *
-     * @param cityHint user's selected city — passed through to the LLM so
-     *                 queries without explicit city mention default to the
-     *                 correct city instead of always "北京"
+     * Reactive entry point (no city hint — defaults to "北京").
      */
     public Mono<ConversationResult> processAsync(String query, String sessionId) {
         return processAsync(query, sessionId, null);
     }
 
     public Mono<ConversationResult> processAsync(String query, String sessionId, String cityHint) {
-        log.info("ConversationAgent processing query: '{}' for session: {}, cityHint={}", query, sessionId, cityHint);
+        return processAsync(query, sessionId, cityHint, null, null);
+    }
+
+    public Mono<ConversationResult> processAsync(String query, String sessionId, String cityHint,
+                                                   String userProvider, String userApiKey) {
+        log.info("ConversationAgent processing query: '{}' for session: {}, cityHint={}, userApiKey={}",
+                query, sessionId, cityHint, userApiKey != null);
 
         String actualSessionId = sessionId;
         if (actualSessionId == null || actualSessionId.isBlank()) {
@@ -61,12 +62,26 @@ public class ConversationAgent {
 
         final var sid = actualSessionId;
 
-        // LLM parse (reactive, offloaded to boundedElastic) and session lookup in parallel
-        var intentMono = intentParser.parseAsync(query, sid, cityHint);
+        // Step 1: Load session state first, then pass previousIntent to LLM
+        // This ensures the LLM knows about prior requirements (city, budget, categories, etc.)
         var sessionMono = Mono.fromCallable(() -> sessionManager.getSession(sid))
                 .subscribeOn(Schedulers.boundedElastic());
 
-        return Mono.zip(intentMono, sessionMono).map(tuple -> {
+        // Step 2: Use session context to inform LLM parsing — preserves user's original
+        // requirements across multiple conversation turns
+        var intentWithContextMono = sessionMono.flatMap(existingSession -> {
+            UserIntent previousIntent = null;
+            if (existingSession.isPresent() && existingSession.get().currentIntent() != null) {
+                previousIntent = existingSession.get().currentIntent();
+                log.info("Loaded previous intent for session {}: city={}, district={}, categories={}, keywords={}, specialRequest={}",
+                        sid, previousIntent.city(), previousIntent.district(),
+                        previousIntent.preferredCategories(), previousIntent.keywords(),
+                        previousIntent.specialRequest());
+            }
+            return intentParser.parseAsync(query, sid, cityHint, previousIntent, userProvider, userApiKey);
+        });
+
+        return Mono.zip(intentWithContextMono, sessionMono).map(tuple -> {
             var intent = tuple.getT1();
             var existingSession = tuple.getT2();
 
