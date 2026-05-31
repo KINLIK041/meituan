@@ -3,14 +3,12 @@
 const { useState: useStateChat, useEffect: useEffectChat, useRef: useRefChat } = React;
 
 // ─── Top bar (redesigned: icon-forward, minimal text) ──────────
-function ChatTopBar({ city, onCityClick, onMenuClick, onNewChat, title }) {
+function ChatTopBar({ onMenuClick, onNewChat, title }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 14px', background: '#FBFBFD',
-      borderBottom: '1px solid rgba(0,0,0,0.04)',
     }}>
-      {/* Left: hamburger menu */}
       <button onClick={onMenuClick} style={{
         width: 36, height: 36, borderRadius: 10,
         background: 'transparent', border: 'none', cursor: 'pointer',
@@ -19,31 +17,16 @@ function ChatTopBar({ city, onCityClick, onMenuClick, onNewChat, title }) {
       }}>
         <Icon name="Menu" size={22} color="#1A1A1A" />
       </button>
-
-      {/* Center: title + city */}
-      <div style={{ textAlign: 'center', flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 17, color: '#1A1A1A' }}>
-          {title || '路线助手'}
-        </div>
-        <button onClick={onCityClick} style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: 11, color: '#8E8E93', fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 2,
-          padding: '2px 0 0', fontFamily: 'inherit',
-        }}>
-          <Icon name="MapPin" size={9} color="#C0C0C8" />
-          {city || '北京'}
-        </button>
+      <div style={{ fontWeight: 700, fontSize: 17, color: '#1A1A1A', flex: 1 }}>
+        {title || '路线助手'}
       </div>
-
-      {/* Right: new chat */}
       <button onClick={onNewChat} style={{
         width: 36, height: 36, borderRadius: 10,
         background: 'transparent', border: 'none', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 0,
       }}>
-        <Icon name="SquarePen" size={20} color="#1A1A1A" />
+        <Icon name="Plus" size={22} color="#1A1A1A" strokeWidth={2} />
       </button>
     </div>);
 }
@@ -940,14 +923,8 @@ function ChatScreen({
   const convoMessages = chatState.conversationMessages || [];
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#F7F7F8' }}>
-      <ChatTopBar
-        city={city}
-        onCityClick={() => setCityPickerOpen(true)}
-        onMenuClick={() => setSidebarOpen(true)}
-        onNewChat={onNewConversation || (function() { window.location.reload(); })}
-      />
-
+    <div style={{ height: '100%', position: 'relative', background: '#F7F7F8', overflow: 'hidden' }}>
+      {/* Sidebar — always rendered behind main content */}
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -960,6 +937,22 @@ function ChatScreen({
         city={city}
         onCityChange={onCityChange}
       />
+
+      {/* Main content — slides right when sidebar opens */}
+      <div style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        background: '#F7F7F8',
+        transform: sidebarOpen ? 'translateX(275px)' : 'translateX(0)',
+        borderRadius: sidebarOpen ? 20 : 0,
+        boxShadow: sidebarOpen ? '-8px 0 40px rgba(0,0,0,0.15)' : 'none',
+        transition: 'all 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative', zIndex: 2,
+        overflow: 'hidden',
+      }}>
+        <ChatTopBar
+          onMenuClick={() => setSidebarOpen(true)}
+          onNewChat={onNewConversation || (function() { window.location.reload(); })}
+        />
 
       <CityPickerSheet
         open={cityPickerOpen}
@@ -1128,6 +1121,7 @@ function ChatScreen({
         />
       )}
     </div>
+      </div>
   );
 }
 
