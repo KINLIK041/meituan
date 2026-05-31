@@ -51,6 +51,10 @@ function ChatTopBar({ city, onCityClick, onMenuClick, onNewChat, title }) {
 // ─── Sidebar ────────────────────────────────────────────────────
 function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistory, favorites, onOpenDetail, city, onCityChange }) {
   var [favList, setFavList] = useStateChat([]);
+  var [favFilter, setFavFilter] = useStateChat('');
+  var [histFilter, setHistFilter] = useStateChat('');
+  var [cityPickerOpen, setCityPickerOpen] = useStateChat(false);
+
   useEffectChat(function() {
     if (open && window.getFavorites) {
       window.getFavorites().then(function(f) { setFavList(f || []); }).catch(function() {});
@@ -59,11 +63,17 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
 
   if (!open) return null;
 
+  var filteredFavs = favList.filter(function(f) {
+    return !favFilter || (f.routeName || '').indexOf(favFilter) >= 0;
+  });
+  var filteredHist = (history || []).filter(function(h) {
+    return !histFilter || (h.scene || '').indexOf(histFilter) >= 0 || (h.firstQuery || '').indexOf(histFilter) >= 0;
+  });
+
   return (
     <div>
       <div onClick={onClose} style={{
-        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)',
-        zIndex: 100,
+        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 100,
       }} />
       <div style={{
         position: 'absolute', top: 0, left: 0, bottom: 0,
@@ -72,7 +82,7 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
         boxShadow: '8px 0 40px rgba(0,0,0,0.06)',
         animation: 'slideInLeft 0.22s ease-out',
       }}>
-        {/* User profile card */}
+        {/* User profile */}
         <div style={{ padding: '24px 18px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
@@ -85,23 +95,18 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
               {currentUser ? currentUser.name.charAt(0) : '?'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1A1A' }}>
-                {currentUser ? currentUser.name : '未登录'}
-              </div>
-              <div style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>
-                {currentUser && currentUser.profileName ? currentUser.profileName : city}
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1A1A' }}>{currentUser ? currentUser.name : '未登录'}</div>
+              <div style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>{currentUser && currentUser.profileName ? currentUser.profileName : city}</div>
             </div>
           </div>
         </div>
 
-        {/* New chat button */}
-        <div style={{ padding: '0 18px 16px' }}>
-          <button onClick={function() { onClose(); }} style={{
-            width: '100%', padding: '11px 0',
+        {/* New chat */}
+        <div style={{ padding: '0 18px 10px' }}>
+          <button onClick={onClose} style={{
+            width: '100%', padding: '11px 0', borderRadius: 14,
             background: '#FF6633', color: '#fff', border: 'none',
-            borderRadius: 14, fontSize: 14, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             boxShadow: '0 2px 12px rgba(255,102,51,0.25)',
           }}>
@@ -109,75 +114,106 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
           </button>
         </div>
 
-        {/* City picker */}
-        <div style={{ display: 'flex', gap: 8, padding: '0 18px', marginBottom: 18 }}>
-          {['北京', '上海'].map(function(c) { return (
-            <button key={c} onClick={function() { if (onCityChange) onCityChange(c); }} style={{
-              flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 600,
-              color: city === c ? '#FF6633' : '#8E8E93',
-              background: city === c ? '#FFF5F0' : '#F7F7F8',
-              border: city === c ? '1.5px solid #FFC8AA' : '1px solid transparent',
-              borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}>{c}</button>
-          );})}
+        {/* City box */}
+        <div style={{ padding: '0 18px 14px' }}>
+          <button onClick={function() { setCityPickerOpen(true); }} style={{
+            width: '100%', padding: '10px 14px', borderRadius: 12,
+            background: '#F7F7F8', border: '1px solid #EDEDEF',
+            cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Icon name="MapPin" size={16} color="#FF6633" />
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 14, fontWeight: 600, color: '#1A1A1A' }}>{city || '北京'}</span>
+            <Icon name="ChevronRight" size={14} color="#C7C7CC" />
+          </button>
         </div>
 
         {/* Divider */}
         <div style={{ height: 1, background: '#F0F0F3', margin: '0 18px' }} />
 
-        {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
-          {/* Favorites */}
-          {favList.length > 0 && (
-            <div style={{ marginBottom: 22 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93', marginBottom: 10, letterSpacing: 0.3 }}>
-                <Icon name="Bookmark" size={13} color="#8E8E93" style={{ marginRight: 5 }} />收藏
+        {/* Fixed sections */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingTop: 14 }}>
+          {/* Favorites section */}
+          <div style={{ padding: '0 18px', marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#48484A' }}>
+                <Icon name="Bookmark" size={14} color="#48484A" style={{ marginRight: 5 }} />收藏
               </div>
-              {favList.slice(0, 8).map(function(f) { return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: '#F2F2F7', borderRadius: 8, padding: '4px 8px',
+              }}>
+                <Icon name="Search" size={11} color="#8E8E93" />
+                <input placeholder="搜索" value={favFilter} onChange={function(e) { setFavFilter(e.target.value); }}
+                  style={{
+                    width: 60, border: 'none', outline: 'none', background: 'transparent',
+                    fontSize: 11, color: '#1A1A1A', fontFamily: 'inherit',
+                  }} />
+              </div>
+            </div>
+            <div style={{
+              maxHeight: favList.length > 0 ? 160 : 0,
+              overflowY: 'auto', borderRadius: 12,
+              background: '#F9F9FB', border: favList.length > 0 ? '1px solid #F0F0F3' : 'none',
+              padding: favList.length > 0 ? '6px' : 0,
+            }}>
+              {filteredFavs.slice(0, 15).map(function(f) { return (
                 <div key={f.id} onClick={function() {
                   try { var route = JSON.parse(f.routeJson); if (onOpenDetail) onOpenDetail(route); onClose(); } catch(e) {}
                 }} style={{
-                  padding: '11px 14px', cursor: 'pointer', borderRadius: 12,
-                  background: '#F9F9FB', marginBottom: 6,
-                  border: '1px solid #F0F0F3', transition: 'all 0.15s',
+                  padding: '10px 12px', cursor: 'pointer', borderRadius: 8,
+                  background: '#fff', marginBottom: 4, border: '1px solid #F0F0F3',
                 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.routeName || '路线'}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 3 }}>{f.totalTime || ''} · ¥{f.totalCost || 0}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.routeName || '路线'}</div>
+                  <div style={{ fontSize: 10, color: '#8E8E93', marginTop: 2 }}>{f.totalTime || ''} · ¥{f.totalCost || 0}</div>
                 </div>
               );})}
+              {favList.length === 0 && <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: '#C7C7CC' }}>暂无收藏</div>}
             </div>
-          )}
+          </div>
 
-          {/* History */}
-          {history && history.length > 0 && (
-            <div style={{ marginBottom: 22 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93', marginBottom: 10, letterSpacing: 0.3 }}>
-                <Icon name="Clock" size={13} color="#8E8E93" style={{ marginRight: 5 }} />历史对话
+          {/* History section */}
+          <div style={{ padding: '0 18px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#48484A' }}>
+                <Icon name="Clock" size={14} color="#48484A" style={{ marginRight: 5 }} />历史对话
               </div>
-              {history.slice(0, 12).map(function(h, i) { return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: '#F2F2F7', borderRadius: 8, padding: '4px 8px',
+              }}>
+                <Icon name="Search" size={11} color="#8E8E93" />
+                <input placeholder="搜索" value={histFilter} onChange={function(e) { setHistFilter(e.target.value); }}
+                  style={{
+                    width: 60, border: 'none', outline: 'none', background: 'transparent',
+                    fontSize: 11, color: '#1A1A1A', fontFamily: 'inherit',
+                  }} />
+              </div>
+            </div>
+            <div style={{
+              flex: 1, overflowY: 'auto', borderRadius: 12,
+              background: '#F9F9FB', border: (history || []).length > 0 ? '1px solid #F0F0F3' : 'none',
+              padding: (history || []).length > 0 ? '6px' : 0, minHeight: 60,
+            }}>
+              {filteredHist.slice(0, 20).map(function(h, i) { return (
                 <div key={i} onClick={function() { if (onReplayHistory) onReplayHistory(i); onClose(); }} style={{
-                  padding: '11px 14px', cursor: 'pointer', borderRadius: 12,
-                  background: '#F9F9FB', marginBottom: 6,
-                  border: '1px solid #F0F0F3', transition: 'all 0.15s',
+                  padding: '10px 12px', cursor: 'pointer', borderRadius: 8,
+                  background: '#fff', marginBottom: 4, border: '1px solid #F0F0F3',
                 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {h.scene || '对话'}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 3 }}>{h.firstQuery ? h.firstQuery.substring(0, 28) : h.timeLabel}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.scene || '对话'}</div>
+                  <div style={{ fontSize: 10, color: '#8E8E93', marginTop: 2 }}>{h.firstQuery ? h.firstQuery.substring(0, 24) : h.timeLabel}</div>
                 </div>
               );})}
+              {(!history || history.length === 0) && <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: '#C7C7CC' }}>暂无历史</div>}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Logout */}
         <div style={{ padding: '12px 18px 18px' }}>
           <button onClick={function() { if (onLogout) onLogout(); onClose(); }} style={{
-            width: '100%', padding: '11px 0',
-            background: '#FFF', border: '1.5px solid #EDEDEF', borderRadius: 14,
+            width: '100%', padding: '11px 0', borderRadius: 14,
+            background: '#FFF', border: '1.5px solid #EDEDEF',
             fontSize: 13, fontWeight: 600, color: '#8E8E93',
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -186,6 +222,16 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
           </button>
         </div>
       </div>
+
+      {/* Full-page city picker */}
+      {cityPickerOpen && (
+        <CityPickerFullPage
+          currentCity={city}
+          onSelect={function(c) { if (onCityChange) onCityChange(c); setCityPickerOpen(false); }}
+          onClose={function() { setCityPickerOpen(false); }}
+        />
+      )}
+
       <style>{`
         @keyframes slideInLeft {
           from { transform: translateX(-100%); }
@@ -201,6 +247,164 @@ const CITIES = [
   { name: '北京', district: '朝阳·海淀·东城' },
   { name: '上海', district: '黄浦·浦东·静安' },
 ];
+
+// ─── Full-page city picker ──────────────────────────────────────
+var ALL_CITIES = [
+  '北京','上海','广州','深圳','成都','杭州','武汉','西安','南京','重庆',
+  '长沙','天津','苏州','郑州','青岛','大连','厦门','昆明','贵阳','南宁',
+  '合肥','济南','沈阳','哈尔滨','长春','福州','南昌','太原','石家庄','兰州',
+  '海口','三亚','珠海','佛山','东莞','宁波','温州','无锡','常州','南通',
+  '徐州','扬州','绍兴','嘉兴','金华','台州','泉州','漳州','烟台','威海',
+  '洛阳','开封','桂林','丽江','大理','拉萨','乌鲁木齐','呼和浩特','银川','西宁',
+  '香港','澳门','台北','高雄','台中'
+];
+
+function CityPickerFullPage({ currentCity, onSelect, onClose }) {
+  var [search, setSearch] = useStateChat('');
+  var POPULAR = ['北京','上海','香港','成都','西安','杭州','广州','深圳','重庆','南京','武汉','长沙'];
+
+  var filtered = search.trim()
+    ? ALL_CITIES.filter(function(c) { return c.indexOf(search) >= 0 || c.toLowerCase().indexOf(search.toLowerCase()) >= 0; })
+    : ALL_CITIES;
+
+  // A-Z index
+  var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  var cityMap = {};
+  ALL_CITIES.forEach(function(c) {
+    var py = c.charAt(0);
+    // Simple pinyin mapping for common characters
+    var letterMap = { '北':'B','上':'S','广':'G','深':'S','成':'C','杭':'H','武':'W','西':'X','南':'N','重':'C','长':'C','天':'T','苏':'S','郑':'Z','青':'Q','大':'D','厦':'X','昆':'K','贵':'G','南':'N','合':'H','济':'J','沈':'S','哈':'H','长':'C','福':'F','南':'N','太':'T','石':'S','兰':'L','海':'H','三':'S','珠':'Z','佛':'F','东':'D','宁':'N','温':'W','无':'W','常':'C','南':'N','徐':'X','扬':'Y','绍':'S','嘉':'J','金':'J','台':'T','泉':'Q','漳':'Z','烟':'Y','威':'W','洛':'L','开':'K','桂':'G','丽':'L','大':'D','拉':'L','乌':'W','呼':'H','银':'Y','西':'X','香':'X','澳':'A','台':'T','高':'G' };
+    var letter = letterMap[py] || py;
+    if (!cityMap[letter]) cityMap[letter] = [];
+    cityMap[letter].push(c);
+  });
+  if (search.trim()) {
+    cityMap = { '结果': filtered };
+    letters = ['结果'];
+  }
+
+  function scrollToLetter(letter) {
+    var el = document.getElementById('city-section-' + letter);
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, background: '#FBFBFD', zIndex: 200,
+      display: 'flex', flexDirection: 'column',
+      animation: 'slideInLeft 0.22s ease-out',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: '#fff', borderBottom: '1px solid #EDEDEF' }}>
+        <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="ChevronLeft" size={22} color="#1A1A1A" />
+        </button>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 700, color: '#1A1A1A' }}>选择城市</div>
+        <div style={{ width: 36 }} />
+      </div>
+
+      {/* Search bar */}
+      <div style={{ padding: '12px 14px', background: '#fff' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#F2F2F7', borderRadius: 12, padding: '10px 14px',
+        }}>
+          <Icon name="Search" size={16} color="#8E8E93" />
+          <input value={search} onChange={function(e) { setSearch(e.target.value); }}
+            placeholder="搜索目的地" autoFocus
+            style={{
+              flex: 1, border: 'none', outline: 'none', background: 'transparent',
+              fontSize: 15, color: '#1A1A1A', fontFamily: 'inherit',
+            }} />
+          {search && (
+            <button onClick={function() { setSearch(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+              <Icon name="X" size={14} color="#8E8E93" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {!search.trim() && (
+          <>
+            {/* Current city */}
+            <div style={{ padding: '14px 16px 8px' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#8E8E93', marginBottom: 8 }}>当前城市</div>
+              <button onClick={function() { onSelect(currentCity || '北京'); }} style={{
+                width: '100%', padding: '12px 14px', borderRadius: 12,
+                background: '#FFF5F0', border: '1.5px solid #FFC8AA',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#FF6633' }}>{currentCity || '北京'}</div>
+                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 2 }}>当前定位城市</div>
+                </div>
+                <div style={{
+                  width: 22, height: 22, borderRadius: 11, background: '#FF6633',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon name="Check" size={12} color="#fff" />
+                </div>
+              </button>
+            </div>
+
+            {/* Popular cities */}
+            <div style={{ padding: '8px 16px' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#8E8E93', marginBottom: 10 }}>热门目的地</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {POPULAR.map(function(c) { return (
+                  <button key={c} onClick={function() { onSelect(c); }} style={{
+                    padding: '12px 8px', borderRadius: 12,
+                    background: currentCity === c ? '#FFF5F0' : '#F7F7F8',
+                    border: currentCity === c ? '1.5px solid #FFC8AA' : '1px solid transparent',
+                    cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
+                    color: currentCity === c ? '#FF6633' : '#1A1A1A', textAlign: 'center',
+                  }}>{c}</button>
+                );})}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* All cities by letter */}
+        {Object.keys(cityMap).sort().map(function(letter) { return (
+          <div key={letter} id={'city-section-' + letter} style={{ padding: '0 16px 8px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#8E8E93', padding: '10px 0 8px', position: 'sticky', top: 0, background: '#FBFBFD' }}>{letter}</div>
+            {cityMap[letter].map(function(c) { return (
+              <button key={c} onClick={function() { onSelect(c); }} style={{
+                width: '100%', padding: '13px 8px', borderRadius: 10,
+                background: currentCity === c ? '#F7F7F8' : 'transparent',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 14, fontWeight: 500, color: currentCity === c ? '#FF6633' : '#1A1A1A',
+                textAlign: 'left', borderBottom: '1px solid #F0F0F3',
+              }}>{c}</button>
+            );})}
+          </div>
+        );})}
+      </div>
+
+      {/* A-Z index bar */}
+      {!search.trim() && (
+        <div style={{
+          position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
+          display: 'flex', flexDirection: 'column', gap: 1,
+          zIndex: 10, padding: '4px 2px',
+        }}>
+          {letters.map(function(l) { return (
+            <button key={l} onClick={function() { scrollToLetter(l); }} style={{
+              width: 20, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: 10, fontWeight: 600, color: '#8E8E93', fontFamily: 'inherit',
+              padding: 0,
+            }}>{l}</button>
+          );})}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CityPickerSheet({ open, currentCity, onSelect, onClose }) {
   if (!open) return null;
@@ -1030,4 +1234,4 @@ function UserPickerSheet({ open, currentUser, onSelect, onClose, onAddUser }) {
   );
 }
 
-Object.assign(window, { ChatScreen, ChatTopBar, CityPickerSheet, Sidebar, CITIES });
+Object.assign(window, { ChatScreen, ChatTopBar, CityPickerSheet, CityPickerFullPage, Sidebar, CITIES });
