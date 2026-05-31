@@ -47,10 +47,37 @@ function Sidebar({ open, onClose, currentUser, onLogout, history, onReplayHistor
   if (!open) return null;
 
   var filteredFavs = favList.filter(function(f) {
-    return !favFilter || (f.routeName || '').indexOf(favFilter) >= 0;
+    if (!favFilter) return true;
+    var q = favFilter;
+    if ((f.routeName || '').indexOf(q) >= 0) return true;
+    try {
+      var r = typeof f.routeJson === 'string' ? JSON.parse(f.routeJson) : f.routeJson;
+      if (r && r.segments) {
+        for (var s = 0; s < r.segments.length; s++) {
+          var p = r.segments[s].poi;
+          if (p && ((p.name || '').indexOf(q) >= 0)) return true;
+        }
+      }
+    } catch(e) {}
+    return false;
   });
   var filteredHist = (history || []).filter(function(h) {
-    return !histFilter || (h.scene || '').indexOf(histFilter) >= 0 || (h.firstQuery || '').indexOf(histFilter) >= 0;
+    if (!histFilter) return true;
+    var q = histFilter;
+    if ((h.scene || '').indexOf(q) >= 0) return true;
+    if ((h.firstQuery || '').indexOf(q) >= 0) return true;
+    // Also search in route POI names from stored routes
+    if (h.routes) {
+      for (var ri = 0; ri < h.routes.length; ri++) {
+        var r = h.routes[ri];
+        if (r.pois) {
+          for (var pi = 0; pi < r.pois.length; pi++) {
+            if ((r.pois[pi].short || '').indexOf(q) >= 0) return true;
+          }
+        }
+      }
+    }
+    return false;
   });
 
   return (

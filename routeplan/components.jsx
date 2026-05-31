@@ -71,14 +71,15 @@ function Tag({ tone = 'green', children }) {
 function Chip({ children, active, onClick, icon }) {
   return (
     <button onClick={onClick} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '7px 12px', borderRadius: 999,
-      background: active ? '#FFF1E5' : '#fff',
-      color: active ? '#E94A1A' : '#1d1d1f',
-      border: `1px solid ${active ? '#FFC8AA' : '#E5E5E7'}`,
-      fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '9px 14px', borderRadius: 12,
+      background: active ? '#FFF5F0' : '#fff',
+      color: active ? '#E94A1A' : '#48484A',
+      border: `1.5px solid ${active ? '#FFC8AA' : '#EDEDEF'}`,
+      fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
       cursor: 'pointer', transition: 'all 0.18s',
-      flexShrink: 0
+      flexShrink: 0,
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
     }}>
       {icon && <Icon name={icon} size={13} />}
       {children}
