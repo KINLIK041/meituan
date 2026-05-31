@@ -557,24 +557,22 @@ function DetailTopBar({ onBack, onSave, onShare, saved, title }) {
         <Icon name="ChevronLeft" size={22} color="#1a1a1a" />
       </button>
       <div style={{ fontWeight: 600, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>{title || '路线详情'}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={onSave} title="收藏路线" style={{
-          width: 36, height: 36, borderRadius: 999, border: 'none',
-          background: 'transparent', cursor: 'pointer',
+          width: 34, height: 34, borderRadius: 17,
+          border: saved ? 'none' : '1.5px solid #E0E0E0',
+          background: saved ? '#FF6633' : 'transparent', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <Icon
-            name={saved ? 'BookmarkCheck' : 'Bookmark'}
-            size={18}
-            color={saved ? '#FF6633' : '#1a1a1a'}
-          />
+          <Icon name="Star" size={17} color={saved ? '#fff' : '#48484A'}
+            fill={saved ? '#fff' : 'none'} />
         </button>
         <button onClick={onShare} title="分享" style={{
-          width: 36, height: 36, borderRadius: 999, border: 'none',
-          background: 'transparent', cursor: 'pointer',
+          width: 34, height: 34, borderRadius: 17,
+          border: '1.5px solid #E0E0E0', background: 'transparent', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <Icon name="Share2" size={18} color="#1a1a1a" />
+          <Icon name="Forward" size={17} color="#48484A" />
         </button>
       </div>
     </div>);
