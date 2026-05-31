@@ -364,7 +364,7 @@ public class IntentParser {
         String district = null;
         List<String> categories = new ArrayList<>();
         String cuisine = null;
-        var startTime = LocalTime.of(18, 0);
+        var startTime = LocalTime.now().withMinute(0).plusHours(1);
         var endTime = LocalTime.of(22, 0);
         double budget = 0;
         int partySize = 2;
