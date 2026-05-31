@@ -599,35 +599,6 @@ function RouteOption({ route, index, total, onOpenDetail }) {
         position: 'relative',
       }}
     >
-      {/* Share + Favorite buttons — top-right corner */}
-      <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 8, zIndex: 10 }}>
-        <button
-          onClick={function(e) { e.stopPropagation(); window._shareRoute = route; window._setShareOpen && window._setShareOpen(true); }}
-          style={{
-            width: 32, height: 32, borderRadius: 999,
-            background: '#fff', border: '1px solid #E5E5E7',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 0, lineHeight: 0,
-          }}
-        >
-          <Icon name="Share2" size={14} color="#8e8e93" />
-        </button>
-        <button
-          onClick={handleFav}
-          style={{
-            width: 32, height: 32, borderRadius: 999,
-            background: favved ? '#FF6633' : '#fff',
-            border: favved ? 'none' : '1px solid #E5E5E7',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 0, lineHeight: 0,
-            boxShadow: favved ? '0 2px 8px rgba(255, 102, 51, 0.25)' : 'none',
-            transition: 'all 0.18s',
-          }}
-        >
-          <Icon name="Bookmark" size={15} color={favved ? '#fff' : '#C7C7CC'} fill={favved ? '#fff' : 'none'} />
-        </button>
-      </div>
-
       {/* Kicker — index + positioning (centered, large Dianping style) */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',

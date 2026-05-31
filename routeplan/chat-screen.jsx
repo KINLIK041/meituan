@@ -21,12 +21,12 @@ function ChatTopBar({ onMenuClick, onNewChat, title }) {
         {title || '路线助手'}
       </div>
       <button onClick={onNewChat} style={{
-        width: 36, height: 36, borderRadius: 10,
-        background: 'transparent', border: 'none', cursor: 'pointer',
+        width: 34, height: 34, borderRadius: 17,
+        background: '#F2F2F7', border: 'none', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 0,
       }}>
-        <Icon name="Plus" size={22} color="#1A1A1A" strokeWidth={2} />
+        <Icon name="Plus" size={18} color="#1A1A1A" strokeWidth={2} />
       </button>
     </div>);
 }
