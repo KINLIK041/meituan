@@ -21,6 +21,7 @@ function LoginModal({ open, onLogin }) {
   const [provider, setProvider] = useStateLogin('deepseek');
   const [apiKey, setApiKey] = useStateLogin('');
   const [avatarIdx, setAvatarIdx] = useStateLogin(0);
+  const [cityPickerOpen, setCityPickerOpen] = useStateLogin(false);
   const [error, setError] = useStateLogin('');
   const [loading, setLoading] = useStateLogin(false);
   const [models, setModels] = useStateLogin([]);
@@ -169,16 +170,26 @@ function LoginModal({ open, onLogin }) {
 
         {mode === 'register' && (
           <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {['北京', '上海'].map(function(c) { return (
-                <button key={c} onClick={function() { setCity(c); }} style={{
-                  flex: 1, padding: '11px', fontSize: 14, fontWeight: 600,
-                  color: city === c ? '#fff' : '#48484A',
-                  background: city === c ? '#FF6633' : '#F2F2F7',
-                  border: 'none', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
-                }}>{c}</button>
-              );})}
-            </div>
+            {/* City picker box — matches sidebar style */}
+            <button onClick={function() { setCityPickerOpen(true); }} style={{
+              width: '100%', padding: '13px 16px', marginBottom: 12,
+              background: '#F7F7F8', border: '1.5px solid #E8E8EA', borderRadius: 14,
+              cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <Icon name="MapPin" size={16} color="#FF6633" />
+              <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 500, color: '#1A1A1A' }}>{city || '北京'}</span>
+              <Icon name="ChevronRight" size={14} color="#C7C7CC" />
+            </button>
+
+            {/* Full city picker */}
+            {cityPickerOpen && window.CityPickerFullPage && (
+              <window.CityPickerFullPage
+                currentCity={city}
+                onSelect={function(c) { setCity(c); setCityPickerOpen(false); }}
+                onClose={function() { setCityPickerOpen(false); }}
+              />
+            )}
 
             {/* Model provider selector */}
             <select value={provider} onChange={function(e) { setProvider(e.target.value); }}
