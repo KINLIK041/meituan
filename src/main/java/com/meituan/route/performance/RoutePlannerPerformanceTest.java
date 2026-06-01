@@ -135,6 +135,7 @@ public class RoutePlannerPerformanceTest {
         System.out.println("╠══════════════════════════════════════════╣");
         System.out.println("║   测试范围: 6 场景 × 2 城市 = 12 条查询  ║");
         System.out.println("║   调整测试: 7 个 Chip 标签               ║");
+        System.out.println("║   架构对比: Agent Loop vs 固定流水线      ║");
         System.out.println("╚══════════════════════════════════════════╝\n");
 
         var allResults = new LinkedHashMap<String, Object>();

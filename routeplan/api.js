@@ -42,7 +42,7 @@ function getCurrentUserId() { return _currentUserId; }
 function setCurrentUserId(id) { _currentUserId = id; }
 
 // ─── Agent mode toggle ────────────────────────────────────────────
-var _isAgentMode = false;
+var _isAgentMode = true;  // default: use Agent Loop architecture
 var _noAgentRecurse = false;  // guard against recursion when agentPlan falls back to smartPlan
 
 function isAgentMode() { return _isAgentMode; }
