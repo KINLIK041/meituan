@@ -6,7 +6,7 @@
 const API_BASE = (function() {
   var host = window.location.hostname;
   if (host === 'localhost' || host === '127.0.0.1' || host === '') {
-    return 'http://localhost:8080';
+    return 'http://localhost:8081';
   }
   // Production: assume backend on same origin
   var proto = window.location.protocol;
