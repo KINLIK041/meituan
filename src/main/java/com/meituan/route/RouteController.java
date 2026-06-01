@@ -22,12 +22,15 @@ public class RouteController {
     private final RoutePlannerOrchestrator orchestrator;
     private final IntentParser intentParser;
     private final UserProfileService userProfileService;
+    private final com.meituan.route.agent.AgentLoopOrchestrator agentLoopOrchestrator;
 
     public RouteController(RoutePlannerOrchestrator orchestrator, IntentParser intentParser,
-                           UserProfileService userProfileService) {
+                           UserProfileService userProfileService,
+                           com.meituan.route.agent.AgentLoopOrchestrator agentLoopOrchestrator) {
         this.orchestrator = orchestrator;
         this.intentParser = intentParser;
         this.userProfileService = userProfileService;
+        this.agentLoopOrchestrator = agentLoopOrchestrator;
     }
 
     @PostMapping(value = "/plan", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -81,6 +84,8 @@ public class RouteController {
                                 result.put("sessionId", plan.sessionId());
                                 result.put("preferenceMatchTags", plan.preferenceMatchTags());
                                 result.put("preferenceScores", plan.preferenceScores());
+                                result.put("ugcMatchTags", plan.ugcMatchTags());
+                                result.put("ugcSummaries", plan.ugcSummaries());
                                 return result;
                             });
                 });
@@ -96,6 +101,19 @@ public class RouteController {
     @GetMapping(value = "/compare/{sessionId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<RoutePlannerOrchestrator.CompareResponse> compare(@PathVariable String sessionId) {
         return orchestrator.getComparison(sessionId);
+    }
+
+    /**
+     * POST /api/route/agent-plan — LLM-driven Agent Loop planning.
+     * Uses the new 1-Agent + Tools architecture: the LLM dynamically decides
+     * which tools to call instead of following a fixed pipeline.
+     * Falls back to the existing pipeline if the Agent Loop cannot complete.
+     */
+    @PostMapping(value = "/agent-plan", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<RoutePlannerOrchestrator.PlanResponse> agentPlan(@RequestBody PlanRequest request,
+                                                                  ServerHttpRequest httpRequest) {
+        var userId = resolveUserId(request.userId(), httpRequest);
+        return agentLoopOrchestrator.agentPlan(request.query(), request.sessionId(), request.city(), userId);
     }
 
     @GetMapping(value = "/health", produces = MediaType.APPLICATION_JSON_VALUE)

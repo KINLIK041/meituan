@@ -159,7 +159,7 @@ public class RoutePlannerOrchestrator {
                         if (!planResult.hasRoutes()) {
                             return Mono.just(new PlanResponse(actualSessionId, List.of(),
                                     planResult.warning() != null ? planResult.warning() : "无法生成路线方案",
-                                    null, "", Map.of(), Map.of()));
+                                    null, "", Map.of(), Map.of(), Map.of(), Map.of()));
                         }
 
                         sessionManager.addSnapshots(actualSessionId, planResult.routes(), intent);
@@ -189,11 +189,15 @@ public class RoutePlannerOrchestrator {
                             // Compute preference match data per route
                             var prefMatchTags = new LinkedHashMap<String, List<String>>();
                             var prefScores = new LinkedHashMap<String, Double>();
+                            var ugcMatchTags = new LinkedHashMap<String, List<String>>();
+                            var ugcSummaries = new LinkedHashMap<String, List<String>>();
                             var isNeutral = preference.userId() == null || "default".equals(preference.userId());
                             if (!isNeutral) {
                                 for (var r : routes) {
                                     prefMatchTags.put(r.id(), preferenceScorer.matchedTags(r, preference));
                                     prefScores.put(r.id(), preferenceScorer.normalizedScore(r, preference));
+                                    ugcMatchTags.put(r.id(), preferenceScorer.matchedUGCTags(r, preference));
+                                    ugcSummaries.put(r.id(), preferenceScorer.matchedUGCSummaries(r, preference));
                                 }
                             }
 
@@ -205,7 +209,9 @@ public class RoutePlannerOrchestrator {
                                     constraintReport.bestRoute(),
                                     explanation.comparisonHtml(),
                                     prefMatchTags,
-                                    prefScores
+                                    prefScores,
+                                    ugcMatchTags,
+                                    ugcSummaries
                             );
                         });
                     });
@@ -264,7 +270,7 @@ public class RoutePlannerOrchestrator {
             var preference = tuple.getT3();
 
             if (ctx.sessionNotFound) {
-                return Mono.just(new PlanResponse(sessionId, List.of(), "会话不存在或已过期", null, "", Map.of(), Map.of()));
+                return Mono.just(new PlanResponse(sessionId, List.of(), "会话不存在或已过期", null, "", Map.of(), Map.of(), Map.of(), Map.of()));
             }
             if (ctx.fallbackToPlan) {
                 return planRoute(adjustment, sessionId, requestCity, null, userId);
@@ -287,7 +293,7 @@ public class RoutePlannerOrchestrator {
 
                 if (!planResult.hasRoutes()) {
                     return Mono.just(new PlanResponse(sessionId, List.of(),
-                            "调整后无法生成新路线", null, "", Map.of(), Map.of()));
+                            "调整后无法生成新路线", null, "", Map.of(), Map.of(), Map.of(), Map.of()));
                 }
 
                 // Build constraints including adjustment-specific ones
@@ -314,11 +320,15 @@ public class RoutePlannerOrchestrator {
                     var routes = planResult.routes();
                     var prefMatchTags = new LinkedHashMap<String, List<String>>();
                     var prefScores = new LinkedHashMap<String, Double>();
+                    var ugcMatchTags = new LinkedHashMap<String, List<String>>();
+                    var ugcSummaries = new LinkedHashMap<String, List<String>>();
                     var isNeutral = preference.userId() == null || "default".equals(preference.userId());
                     if (!isNeutral) {
                         for (var r : routes) {
                             prefMatchTags.put(r.id(), preferenceScorer.matchedTags(r, preference));
                             prefScores.put(r.id(), preferenceScorer.normalizedScore(r, preference));
+                            ugcMatchTags.put(r.id(), preferenceScorer.matchedUGCTags(r, preference));
+                            ugcSummaries.put(r.id(), preferenceScorer.matchedUGCSummaries(r, preference));
                         }
                     }
                     return new PlanResponse(
@@ -328,7 +338,9 @@ public class RoutePlannerOrchestrator {
                             constraintReport.bestRoute(),
                             explanation.comparisonHtml(),
                             prefMatchTags,
-                            prefScores
+                            prefScores,
+                            ugcMatchTags,
+                            ugcSummaries
                     );
                 });
             });
@@ -436,7 +448,9 @@ public class RoutePlannerOrchestrator {
             Route recommendedRoute,
             String explanation,
             Map<String, List<String>> preferenceMatchTags,
-            Map<String, Double> preferenceScores
+            Map<String, Double> preferenceScores,
+            Map<String, List<String>> ugcMatchTags,       // UGC tags matched per route (from real user reviews)
+            Map<String, List<String>> ugcSummaries         // UGC summary snippets per route
     ) {}
 
     public record CompareResponse(

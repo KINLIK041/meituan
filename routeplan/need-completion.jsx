@@ -681,6 +681,18 @@ function RouteOption({ route, index, total, onOpenDetail }) {
                 fontSize: 11.5, color: '#8e8e93', marginTop: 2,
                 letterSpacing: 0.2,
               }}>{p.category}</div>
+              {/* Risk tags per POI */}
+              {p.riskTags && p.riskTags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+                  {p.riskTags.map(function(rt) { return (
+                    <span key={rt} style={{
+                      background: '#FCE9E5', color: '#B43421',
+                      padding: '1px 6px', borderRadius: 4,
+                      fontSize: 10, fontWeight: 500,
+                    }}>{rt}</span>
+                  );})}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -702,16 +714,68 @@ function RouteOption({ route, index, total, onOpenDetail }) {
         lineHeight: 1.7, textWrap: 'pretty',
       }}>{route.reason}</p>
 
-      {/* Preference match badge */}
+      {/* ── Constraint Match Status ── */}
+      {route.constraintMatch && (
+        <div style={{
+          marginTop: 14, padding: '10px 12px',
+          background: '#F7F7F8', borderRadius: 10,
+          border: '1px solid #EDEDEF',
+        }}>
+          <div style={{ fontSize: 11, color: '#8E8E93', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="CheckCircle2" size={12} color="#8E8E93" />
+            约束满足状态
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {[
+              { label: '预算', value: route.constraintMatch.budget, icon: 'Wallet' },
+              { label: '排队', value: route.constraintMatch.queue, icon: 'Clock' },
+              { label: '营业', value: route.constraintMatch.open_time, icon: 'Store' },
+              { label: '距离', value: route.constraintMatch.distance, icon: 'Footprints' },
+            ].map(function(item) {
+              var isOk = item.value === '符合' || item.value === '适中';
+              return (
+                <div key={item.label} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 11.5, padding: '6px 8px',
+                  background: '#fff', borderRadius: 6,
+                }}>
+                  <Icon name={item.icon} size={11} color={isOk ? '#1F8B4C' : '#D14600'} />
+                  <span style={{ color: '#8E8E93' }}>{item.label}</span>
+                  <span style={{
+                    marginLeft: 'auto', fontWeight: 600,
+                    color: isOk ? '#1F8B4C' : '#D14600',
+                    fontSize: 11,
+                  }}>{item.value}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Preference Match with Causal Explanation & Score ── */}
       {route._preferenceMatchTags && route._preferenceMatchTags.length > 0 && (
         <div style={{
           marginTop: 12, padding: '10px 12px',
           background: 'linear-gradient(135deg, #F0F7FF 0%, #F5F9FC 100%)',
           borderRadius: 10, border: '1px solid #D0E4F7',
         }}>
-          <div style={{ fontSize: 11, color: '#2456a6', marginBottom: 6, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="Sparkles" size={12} color="#2456a6" />
-            匹配你的历史偏好
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, color: '#2456a6', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="Sparkles" size={12} color="#2456a6" />
+              匹配你的历史偏好
+            </div>
+            {route._preferenceScore != null && (
+              <span className="num" style={{
+                fontSize: 12, fontWeight: 700, color: '#2456a6',
+                background: '#E6EEF8', padding: '2px 8px', borderRadius: 999,
+              }}>
+                {route._preferenceScore} 分
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: '#48484A', lineHeight: 1.5, marginBottom: 6 }}>
+            因为你过去偏好「{route._preferenceMatchTags.slice(0, 3).join('、')}」{route._preferenceMatchTags.length > 3 ? '等' : ''}，这条路线优先匹配这些偏好。
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {route._preferenceMatchTags.map(function(tag) { return (
@@ -722,6 +786,40 @@ function RouteOption({ route, index, total, onOpenDetail }) {
               }}>{tag}</span>
             );})}
           </div>
+        </div>
+      )}
+
+      {/* ── UGC Review Summaries (from real user reviews) ── */}
+      {route._ugcSummaries && route._ugcSummaries.length > 0 && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px',
+          background: 'linear-gradient(135deg, #FFF8F0 0%, #FFFBF6 100%)',
+          borderRadius: 10, border: '1px solid #FFE4CC',
+        }}>
+          <div style={{ fontSize: 11, color: '#D14600', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="MessageCircle" size={12} color="#D14600" />
+            来自真实用户评价
+          </div>
+          {route._ugcSummaries.map(function(summary, idx) { return (
+            <div key={idx} style={{
+              fontSize: 11.5, color: '#6E6E73', lineHeight: 1.5,
+              padding: '4px 0', borderBottom: idx < route._ugcSummaries.length - 1 ? '1px solid #F0EDE8' : 'none',
+            }}>
+              💬 {summary}
+            </div>
+          );})}
+          {route._ugcMatchTags && route._ugcMatchTags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+              <span style={{ fontSize: 10, color: '#8E8E93' }}>真实评价关键词：</span>
+              {route._ugcMatchTags.map(function(tag) { return (
+                <span key={tag} style={{
+                  background: '#FFF1E5', color: '#D14600',
+                  padding: '2px 6px', borderRadius: 999,
+                  fontSize: 10, fontWeight: 500,
+                }}>{tag}</span>
+              );})}
+            </div>
+          )}
         </div>
       )}
 
@@ -770,7 +868,7 @@ function RouteOption({ route, index, total, onOpenDetail }) {
 // `summaryNode` lets the caller override the default ParsingSummary banner —
 // used by the NL paths (complete / assumption / conflict / followup).
 // `readOnly` hides the bottom quick-adjust chip row — for history items.
-function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, routes: routesProp, onOpenDetail, onSwap, onChip, city }) {
+function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, routes: routesProp, onOpenDetail, onSwap, onChip, city, onCompare }) {
   var routes = routesProp && routesProp.length > 0
     ? routesProp
     : (window.buildRoutesForScene && window.buildRoutesForScene(scene, answers, city || window._currentCity))
@@ -788,7 +886,23 @@ function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, ro
     );
   }
   // Stamp _scene on each route so getPlacesForRoute can find places
-  routes = routes.map(function(r) { r._scene = scene; return r; });
+  // Also add default constraint_match for mock routes that don't have it
+  routes = routes.map(function(r) {
+    r._scene = scene;
+    if (!r.constraintMatch) {
+      r.constraintMatch = {
+        budget: '符合',
+        queue: (r.risks || []).some(function(rk) { return rk.indexOf('排队') !== -1 || rk.indexOf('等位') !== -1; }) ? '可能排队' : '符合',
+        open_time: '符合',
+        distance: (function() {
+          var dist = (r.total_distance || '');
+          if (dist.indexOf('km') !== -1) { var km = parseFloat(dist); return km > 2 ? '较远' : '适中'; }
+          return '适中';
+        })()
+      };
+    }
+    return r;
+  });
   const isEmergency = scene === '临时救场';
   const scrollerRef = useRefNC(null);
   const [activeIdx, setActiveIdx] = useStateNC(0);
@@ -819,13 +933,16 @@ function RouteOptionsCard({ scene, answers, defaulted, summaryNode, readOnly, ro
 
       {/* Section label */}
       {!readOnly && (
-        <div style={{ padding: '14px 18px 14px', minWidth: 0 }}>
+        <div style={{ padding: '14px 18px 14px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{
             fontSize: 17, fontWeight: 700, color: '#1a1a1a',
             letterSpacing: -0.3, lineHeight: 1.2,
           }}>
             <span className="num">{routes.length}</span> 条路线，左右滑动选一条
           </div>
+          {routes.length >= 2 && window.CompareButton && (
+            <window.CompareButton routeCount={routes.length} onClick={function() { if (onCompare) onCompare(routes); }} />
+          )}
         </div>
       )}
       {readOnly && <div style={{ height: 6 }} />}

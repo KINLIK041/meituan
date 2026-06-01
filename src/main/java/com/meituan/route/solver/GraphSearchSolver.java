@@ -129,8 +129,8 @@ public class GraphSearchSolver {
         var sorted = new ArrayList<>(candidates);
         switch (goal) {
             case "BEST_EXPERIENCE" -> sorted.sort((a, b) -> Double.compare(
-                    b.rating() * 20 + b.popularityScore() * 0.3 + barBoost(b),
-                    a.rating() * 20 + a.popularityScore() * 0.3 + barBoost(a)));
+                    b.rating() * 20 + b.popularityScore() * 0.3 + barBoost(b) + ugcBoost(b),
+                    a.rating() * 20 + a.popularityScore() * 0.3 + barBoost(a) + ugcBoost(a)));
             case "FASTEST" -> {
                 double sumLat = 0, sumLng = 0;
                 for (var p : sorted) { sumLat += p.lat(); sumLng += p.lng(); }
@@ -139,25 +139,25 @@ public class GraphSearchSolver {
                     double distA = haversine(a.lat(), a.lng(), cLat, cLng);
                     double distB = haversine(b.lat(), b.lng(), cLat, cLng);
                     double scoreA = (1.0 / Math.max(0.1, distA)) * 5.0
-                            + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3 + barBoost(a);
+                            + (100.0 - Math.min(a.visitDuration(), 100)) * 0.3 + a.rating() * 3 + barBoost(a) + ugcBoost(a);
                     double scoreB = (1.0 / Math.max(0.1, distB)) * 5.0
-                            + (100.0 - Math.min(b.visitDuration(), 100)) * 0.3 + b.rating() * 3 + barBoost(b);
+                            + (100.0 - Math.min(b.visitDuration(), 100)) * 0.3 + b.rating() * 3 + barBoost(b) + ugcBoost(b);
                     return Double.compare(scoreB, scoreA);
                 });
             }
             case "CHEAPEST" -> sorted.sort((a, b) -> Double.compare(
-                    Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5 + barBoost(a),
-                    Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5 + barBoost(b)));
+                    Math.max(0, 500 - a.avgCost()) * 0.3 + a.rating() * 5 + barBoost(a) + ugcBoost(a),
+                    Math.max(0, 500 - b.avgCost()) * 0.3 + b.rating() * 5 + barBoost(b) + ugcBoost(b)));
             case "PREFERENCE" -> {
                 if (preference != null) {
                     sorted.sort((a, b) -> Double.compare(
-                            preferenceScorer.scorePOI(b, preference) * 10 + b.rating() * 5 + barBoost(b),
-                            preferenceScorer.scorePOI(a, preference) * 10 + a.rating() * 5 + barBoost(a)));
+                            preferenceScorer.scorePOI(b, preference) * 10 + b.rating() * 5 + barBoost(b) + ugcBoost(b),
+                            preferenceScorer.scorePOI(a, preference) * 10 + a.rating() * 5 + barBoost(a) + ugcBoost(a)));
                 }
             }
             default -> sorted.sort((a, b) -> Double.compare(
-                    b.rating() * 10 + b.popularityScore() * 0.2 + barBoost(b),
-                    a.rating() * 10 + a.popularityScore() * 0.2 + barBoost(a)));
+                    b.rating() * 10 + b.popularityScore() * 0.2 + barBoost(b) + ugcBoost(b),
+                    a.rating() * 10 + a.popularityScore() * 0.2 + barBoost(a) + ugcBoost(a)));
         }
         return sorted.subList(0, Math.min(15, sorted.size()));
     }
@@ -167,6 +167,34 @@ public class GraphSearchSolver {
         return poi.tags().stream().anyMatch(t ->
                 t.contains("酒") || t.contains("吧") || t.contains("精酿") || t.contains("居酒屋")
                 || t.contains("小酌") || t.contains("深夜")) ? 50 : 0;
+    }
+
+    /**
+     * UGC sentiment boost/penalty based on real user reviews.
+     * Positive UGC tags (安静, 适合约会, 服务好...) boost the score.
+     * Negative UGC tags (排队久, 太吵, 环境差...) penalize the score.
+     * This is how UGC can override raw rating — a 4.6-rated POI with glowing UGC
+     * can outrank a 4.8-rated POI with negative UGC (see TC06).
+     */
+    private static final Set<String> POSITIVE_UGC = Set.of(
+            "安静", "适合约会", "服务好", "环境好", "性价比高", "拍照好看",
+            "出片", "氛围好", "排队短", "份量足", "味道好", "干净", "舒适",
+            "有情调", "私密", "景观好", "停车方便", "近地铁"
+    );
+    private static final Set<String> NEGATIVE_UGC = Set.of(
+            "排队久", "太吵", "环境吵", "人多", "服务差", "环境差", "贵",
+            "份量少", "不好吃", "不干净", "绕路", "闷热", "味道一般",
+            "等位久", "拥挤", "嘈杂", "态度差", "慢"
+    );
+
+    private static double ugcBoost(POI poi) {
+        if (!poi.hasUGC()) return 0;
+        double boost = 0;
+        for (var tag : poi.ugcTags()) {
+            if (POSITIVE_UGC.contains(tag)) boost += 30;
+            else if (NEGATIVE_UGC.contains(tag)) boost -= 30;
+        }
+        return boost;
     }
 
     /**

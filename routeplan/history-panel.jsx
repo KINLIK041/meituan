@@ -126,6 +126,8 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
           )}
           {history.length > 0 && [...history].reverse().map((h, i) => {
             const realIdx = history.length - 1 - i;
+            const displayNum = i + 1; // newest = #1, oldest = #N
+            const isNewest = i === 0;
             return (
               <button
                 key={realIdx}
@@ -147,12 +149,12 @@ function HistoryPanel({ open, history, onClose, onReplay, onNewConversation }) {
                 }}>
                   <span className="num" style={{
                     width: 22, height: 22, borderRadius: 999,
-                    background: realIdx === history.length - 1 ? '#FF6633' : '#fff',
-                    color: realIdx === history.length - 1 ? '#fff' : '#48484A',
-                    border: realIdx === history.length - 1 ? 'none' : '1px solid #E5E5E7',
+                    background: isNewest ? '#FF6633' : '#fff',
+                    color: isNewest ? '#fff' : '#48484A',
+                    border: isNewest ? 'none' : '1px solid #E5E5E7',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10.5, fontWeight: 700,
-                  }}>{realIdx + 1}</span>
+                  }}>{displayNum}</span>
                   {i < history.length - 1 && (
                     <div style={{ width: 1, flex: 1, background: '#E5E5E7', marginTop: 4 }} />
                   )}

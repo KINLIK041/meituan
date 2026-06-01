@@ -91,6 +91,12 @@ function mapRoute(route) {
   const poiList = (route.segments || []).map((seg) => ({
     short: seg.poi ? seg.poi.name : '未知地点',
     category: seg.poi ? (seg.poi.subCategory || seg.poi.category || '') : '',
+    rating: seg.poi ? seg.poi.rating : 0,
+    avgCost: seg.poi ? (seg.poi.avgCost || 0) : 0,
+    queueTime: seg.poi ? (seg.poi.queueTime || 0) : 0,
+    ugcSummary: seg.poi ? (seg.poi.ugcSummary || '') : '',
+    riskTags: seg.poi && seg.poi.riskTags ? seg.poi.riskTags : [],
+    ugcTags: seg.poi && seg.poi.ugcTags ? seg.poi.ugcTags : [],
   }));
 
   // Build transport summary from segments
@@ -103,6 +109,35 @@ function mapRoute(route) {
   // Risks from violated soft constraints
   const risks = (route.violatedSoftConstraints || []).map((c) => c.description || c.name || '').filter(Boolean);
 
+  // Constraint match status from backend route data
+  var constraintMatch = {
+    budget: '符合',
+    queue: '符合',
+    open_time: '符合',
+    distance: '适中'
+  };
+  // Build constraint match from satisfied/violated constraints
+  var satisfiedConstraints = route.satisfiedConstraints || [];
+  var violatedSoftConstraints = route.violatedSoftConstraints || [];
+  var constraintNames = satisfiedConstraints.map(function(c) { return c.name || ''; });
+  var violatedNames = violatedSoftConstraints.map(function(c) { return c.name || ''; });
+
+  if (violatedNames.some(function(n) { return n.indexOf('预算') !== -1 || n.indexOf('budget') !== -1; })) {
+    constraintMatch.budget = '略超预算';
+  }
+  if (violatedNames.some(function(n) { return n.indexOf('排队') !== -1 || n.indexOf('queue') !== -1; })) {
+    constraintMatch.queue = '可能排队';
+  }
+  if (violatedNames.some(function(n) { return n.indexOf('营业') !== -1 || n.indexOf('open') !== -1 || n.indexOf('时间') !== -1; })) {
+    constraintMatch.open_time = '时间紧张';
+  }
+  if (violatedNames.some(function(n) { return n.indexOf('距离') !== -1 || n.indexOf('distance') !== -1; })) {
+    constraintMatch.distance = '较远';
+  }
+
+  // Walking distance from segments
+  var totalWalking = (route.segments || []).reduce(function(sum, s) { return sum + (s.travelTimeFromPrevious || 0); }, 0);
+
   return {
     id: route.id || ('r-' + Math.random().toString(36).slice(2, 8)),
     positioning: tone.positioning,
@@ -110,13 +145,14 @@ function mapRoute(route) {
     route_name: route.name || '推荐路线',
     total_time: fmtDuration(route.totalTravelTime || 0),
     total_avg: Math.round(route.totalCost || 0),
-    total_distance: fmtDistance(
-      (route.segments || []).reduce((sum, s) => sum + (s.travelTimeFromPrevious || 0) * 80, 0)
-    ) || '步行可达',
+    total_distance: fmtDistance(totalWalking * 80) || '步行可达',
+    total_walking_minutes: Math.round(totalWalking),
     transport: transportLabel,
     pois: poiList,
     reason: route.description || '',
     risks: risks,
+    constraintMatch: constraintMatch,
+    optimizationGoal: route.optimizationGoal || 'BEST_EXPERIENCE',
     _raw: route, // keep original for detail page
   };
 }
@@ -131,8 +167,21 @@ function mapPlanResponse(data) {
   routes.forEach((r, i) => {
     r.tone = tones[i] || 'green';
     r.positioning = posLabels[i] || '综合最优';
+    // Attach preference match tags
     if (data.preferenceMatchTags && data.preferenceMatchTags[r.id]) {
       r._preferenceMatchTags = data.preferenceMatchTags[r.id];
+    }
+    // Attach preference score
+    if (data.preferenceScores && data.preferenceScores[r.id] != null) {
+      r._preferenceScore = Math.round(data.preferenceScores[r.id]);
+    }
+    // Attach UGC match tags (from real user reviews)
+    if (data.ugcMatchTags && data.ugcMatchTags[r.id]) {
+      r._ugcMatchTags = data.ugcMatchTags[r.id];
+    }
+    // Attach UGC summaries (real user review snippets)
+    if (data.ugcSummaries && data.ugcSummaries[r.id]) {
+      r._ugcSummaries = data.ugcSummaries[r.id];
     }
   });
   return {
@@ -176,6 +225,15 @@ async function smartPlan(query, sessionId, city) {
         // Attach preference match data from API response
         if (data.preferenceMatchTags && data.preferenceMatchTags[r.id]) {
           r._preferenceMatchTags = data.preferenceMatchTags[r.id];
+        }
+        if (data.preferenceScores && data.preferenceScores[r.id] != null) {
+          r._preferenceScore = Math.round(data.preferenceScores[r.id]);
+        }
+        if (data.ugcMatchTags && data.ugcMatchTags[r.id]) {
+          r._ugcMatchTags = data.ugcMatchTags[r.id];
+        }
+        if (data.ugcSummaries && data.ugcSummaries[r.id]) {
+          r._ugcSummaries = data.ugcSummaries[r.id];
         }
       });
     }

@@ -25,13 +25,40 @@ public record POI(
         List<String> tags,
         String imageUrl,
         String description,
-        double popularityScore // 0-100
+        double popularityScore, // 0-100
+        List<String> ugcTags,   // tags extracted from real user reviews (UGC), e.g. "安静", "排队久"
+        String ugcSummary,      // short summary of what users say, e.g. "人很多，排队久，环境吵"
+        List<String> riskTags   // risk/warning tags, e.g. "排队久", "太吵", "环境嘈杂" (from UGC + merchant)
 ) {
+    /** Compact constructor: ensure non-null defaults for UGC and risk fields. */
+    public POI {
+        if (ugcTags == null) ugcTags = List.of();
+        if (ugcSummary == null) ugcSummary = "";
+        if (riskTags == null) riskTags = List.of();
+    }
+
+    /** Backward-compatible constructor — all existing call sites without UGC/risk data. */
+    public POI(String id, String name, String category, String subCategory,
+               double lat, double lng, String address, String district, String city,
+               double rating, double avgCost, double queueTime,
+               LocalTime openTime, LocalTime closeTime, int visitDuration,
+               List<String> tags, String imageUrl, String description,
+               double popularityScore) {
+        this(id, name, category, subCategory, lat, lng, address, district, city,
+             rating, avgCost, queueTime, openTime, closeTime, visitDuration,
+             tags, imageUrl, description, popularityScore, List.of(), "", List.of());
+    }
+
     public boolean isOpenDuring(LocalTime start, LocalTime end) {
         return !start.isBefore(openTime) && !end.isAfter(closeTime);
     }
 
     public boolean matchesCategory(String cat) {
         return category.equalsIgnoreCase(cat) || tags.stream().anyMatch(t -> t.contains(cat));
+    }
+
+    /** Whether this POI has UGC review data. */
+    public boolean hasUGC() {
+        return !ugcTags.isEmpty() || !ugcSummary.isEmpty();
     }
 }

@@ -109,10 +109,15 @@ public class RecommendationExplainer {
             reasons.add("评分高达" + poi.rating() + "分");
         }
 
-        for (var tag : poi.tags()) {
-            var praises = TAG_PRAISE.get(tag);
-            if (praises != null && !praises.isEmpty()) {
-                reasons.add(praises.get(new Random().nextInt(praises.size())));
+        // UGC reviews take precedence — real user feedback is more trustworthy
+        if (poi.hasUGC() && !poi.ugcSummary().isBlank()) {
+            reasons.add("真实评价：" + poi.ugcSummary());
+        } else {
+            for (var tag : poi.tags()) {
+                var praises = TAG_PRAISE.get(tag);
+                if (praises != null && !praises.isEmpty()) {
+                    reasons.add(praises.get(new Random().nextInt(praises.size())));
+                }
             }
         }
 
@@ -123,12 +128,40 @@ public class RecommendationExplainer {
         return String.join("，", reasons);
     }
 
+    /**
+     * Generate explanation that highlights UGC influence on route ranking.
+     * When UGC data contradicted raw ratings, make that visible.
+     */
+    public String generateUGCExplanation(Route route) {
+        var sb = new StringBuilder();
+        var ugcPOIs = route.segments().stream()
+                .filter(s -> s.poi().hasUGC())
+                .toList();
+
+        if (ugcPOIs.isEmpty()) return "";
+
+        sb.append("💬 来自用户评价：");
+        var parts = new ArrayList<String>();
+        for (var seg : ugcPOIs) {
+            var poi = seg.poi();
+            if (!poi.ugcSummary().isBlank()) {
+                parts.add(poi.name() + " — " + poi.ugcSummary());
+            }
+        }
+        sb.append(String.join("；", parts));
+        return sb.toString();
+    }
+
     private String generateRouteReason(Route route) {
+        // Check if UGC influenced this route
+        var hasUGC = route.segments().stream().anyMatch(s -> s.poi().hasUGC());
+        var ugcSuffix = hasUGC ? "，结合真实用户评价优化" : "";
+
         return switch (route.optimizationGoal()) {
-            case "BEST_EXPERIENCE" -> "精选高评分POI，体验最佳，适合享受型的您";
-            case "FASTEST" -> "路线最紧凑高效，省时省力，适合时间紧张的你";
-            case "CHEAPEST" -> "严格控制预算，性价比之选，花少钱玩尽兴";
-            default -> route.segments().size() + "个地点串联，合理规划时间";
+            case "BEST_EXPERIENCE" -> "精选高评分POI，体验最佳，适合享受型的您" + ugcSuffix;
+            case "FASTEST" -> "路线最紧凑高效，省时省力，适合时间紧张的你" + ugcSuffix;
+            case "CHEAPEST" -> "严格控制预算，性价比之选，花少钱玩尽兴" + ugcSuffix;
+            default -> route.segments().size() + "个地点串联，合理规划时间" + ugcSuffix;
         };
     }
 }

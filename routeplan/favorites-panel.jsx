@@ -1,24 +1,55 @@
-// Favorites panel — bottom sheet showing saved routes.
+// Favorites panel — bottom sheet showing saved routes with search.
 // Accessible from the bookmark icon in the top bar.
 
-const { useState: useStateFav, useEffect: useEffectFav } = React;
+const { useState: useStateFav, useEffect: useEffectFav, useMemo: useMemoFav } = React;
 
 function FavoritesPanel({ open, onClose, onOpenDetail }) {
   const [favorites, setFavorites] = useStateFav([]);
   const [loading, setLoading] = useStateFav(false);
+  const [search, setSearch] = useStateFav('');
 
   useEffectFav(function() {
     if (!open) return;
+    setSearch('');
     setLoading(true);
     window.getFavorites().then(function(data) {
-      setFavorites(data || []);
+      var list = data || [];
+      // Sort newest first by createdAt (server should already do this, but enforce locally too)
+      list.sort(function(a, b) {
+        var ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        var tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
+      setFavorites(list);
       setLoading(false);
     }).catch(function() {
-      // API unavailable — use mock empty
       setFavorites([]);
       setLoading(false);
     });
   }, [open]);
+
+  // Filter by search keyword — matches route name, scene, and POI names inside routeJson
+  var filteredFavorites = useMemoFav(function() {
+    if (!search.trim()) return favorites;
+    var kw = search.trim().toLowerCase();
+    return favorites.filter(function(f) {
+      // Match route name
+      if (f.routeName && f.routeName.toLowerCase().indexOf(kw) !== -1) return true;
+      // Match scene
+      if (f.scene && f.scene.toLowerCase().indexOf(kw) !== -1) return true;
+      // Match POI names inside routeJson
+      try {
+        var routeData = JSON.parse(f.routeJson || '{}');
+        var pois = routeData.pois || routeData._raw && routeData._raw.segments || [];
+        for (var i = 0; i < pois.length; i++) {
+          var poi = pois[i].poi || pois[i];
+          var name = poi.name || poi.short || '';
+          if (name.toLowerCase().indexOf(kw) !== -1) return true;
+        }
+      } catch(e) {}
+      return false;
+    });
+  }, [favorites, search]);
 
   if (!open) return null;
 
@@ -65,6 +96,38 @@ function FavoritesPanel({ open, onClose, onOpenDetail }) {
           </button>
         </div>
 
+        {/* search bar */}
+        {favorites.length > 0 && (
+          <div style={{ padding: '10px 16px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#fff', borderRadius: 12,
+              border: '1px solid #E8E8EA',
+              padding: '0 12px',
+            }}>
+              <Icon name="Search" size={15} color="#8E8E93" />
+              <input
+                type="text"
+                placeholder="搜索收藏的路线、店铺或景点..."
+                value={search}
+                onChange={function(e) { setSearch(e.target.value); }}
+                style={{
+                  flex: 1, padding: '11px 0', fontSize: 14, fontWeight: 500,
+                  color: '#1A1A1A', border: 'none', outline: 'none',
+                  fontFamily: 'inherit', background: 'transparent',
+                }}
+              />
+              {search && (
+                <button onClick={function() { setSearch(''); }} style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                }}>
+                  <Icon name="XCircle" size={15} color="#C7C7CC" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* list */}
         <div className="frame-scroll" style={{
           flex: 1, overflowY: 'auto',
@@ -80,7 +143,7 @@ function FavoritesPanel({ open, onClose, onOpenDetail }) {
             </div>
           )}
 
-          {!loading && favorites.length === 0 && (
+          {!loading && filteredFavorites.length === 0 && !search && (
             <div style={{
               padding: '48px 20px', textAlign: 'center',
               color: '#8e8e93', fontSize: 13, lineHeight: 1.7,
@@ -97,7 +160,16 @@ function FavoritesPanel({ open, onClose, onOpenDetail }) {
             </div>
           )}
 
-          {!loading && favorites.map(function(f) {
+          {!loading && filteredFavorites.length === 0 && search && (
+            <div style={{
+              padding: '48px 20px', textAlign: 'center',
+              color: '#8e8e93', fontSize: 13, lineHeight: 1.7,
+            }}>
+              没有找到包含「{search}」的收藏
+            </div>
+          )}
+
+          {!loading && filteredFavorites.map(function(f) {
             var routeData = null;
             try { routeData = JSON.parse(f.routeJson || '{}'); } catch(e) { routeData = {}; }
             return (

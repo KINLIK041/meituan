@@ -919,6 +919,8 @@ function ChatScreen({
   const [favoritesOpen, setFavoritesOpen] = useStateChat(false);
   const [shareOpen, setShareOpen] = useStateChat(false);
   const [shareRoute, setShareRoute] = useStateChat(null);
+  const [compareOpen, setCompareOpen] = useStateChat(false);
+  const [compareRoutes, setCompareRoutes] = useStateChat(null);
   const scrollRef = useRefChat(null);
 
   // Wire up shared state for cross-component SharePanel access
@@ -948,6 +950,22 @@ function ChatScreen({
   const isNLPath = !!chatState.userText;
   const stage = chatState.stage;
   const convoMessages = chatState.conversationMessages || [];
+
+  // Full-page compare view — replaces the entire main screen
+  if (compareOpen && window.RouteComparePanel) {
+    return (
+      <div style={{ height: '100%', position: 'relative', background: '#F7F7F8', overflow: 'hidden' }}>
+        <window.RouteComparePanel
+          routes={compareRoutes || []}
+          onBack={function() { setCompareOpen(false); }}
+          onSelectRoute={function(route) {
+            setCompareOpen(false);
+            if (onOpenDetail) onOpenDetail(route);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%', position: 'relative', background: '#F7F7F8', overflow: 'hidden' }}>
@@ -1110,6 +1128,7 @@ function ChatScreen({
               onSwap={onSwap}
               onChip={onChip}
               city={city}
+              onCompare={function(routes) { setCompareRoutes(routes); setCompareOpen(true); }}
             />
           </>
         )}
