@@ -73,6 +73,8 @@ function App() {
 
   // Auth gate: must login before using the product
   const [showLogin, setShowLogin] = useStateApp(true);
+  // Expose for api.js to trigger on 401
+  useEffectApp(function() { window._showLogin = function() { setShowLogin(true); }; return function() { delete window._showLogin; }; }, []);
   const [authChecked, setAuthChecked] = useStateApp(false);
   useEffectApp(() => {
     var authUser = null;

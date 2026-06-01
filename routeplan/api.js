@@ -29,6 +29,14 @@ function fetchWithTimeout(url, options, timeoutMs) {
     opts.headers = Object.assign({}, opts.headers || {}, { 'Authorization': 'Bearer ' + token });
   }
   return fetch(url, opts)
+    .then(function(res) {
+      // 401/403 → trigger login modal
+      if ((res.status === 401 || res.status === 403) && window._showLogin) {
+        try { localStorage.removeItem('_authToken'); localStorage.removeItem('_authUser'); } catch(e) {}
+        window._showLogin();
+      }
+      return res;
+    })
     .finally(function() { clearTimeout(timer); });
 }
 
@@ -42,7 +50,7 @@ function getCurrentUserId() { return _currentUserId; }
 function setCurrentUserId(id) { _currentUserId = id; }
 
 // ─── Agent mode toggle ────────────────────────────────────────────
-var _isAgentMode = true;  // default: use Agent Loop architecture
+var _isAgentMode = false;  // default: fast fixed pipeline; set true for Agent Loop demo
 var _noAgentRecurse = false;  // guard against recursion when agentPlan falls back to smartPlan
 
 function isAgentMode() { return _isAgentMode; }
