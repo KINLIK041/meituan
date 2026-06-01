@@ -507,8 +507,6 @@ async function planWithFallback(query, scene, answers, city, intent) {
     recommendedRoute: null,
   };
 }
-  };
-}
 
 /**
  * Adjust a route via the backend.

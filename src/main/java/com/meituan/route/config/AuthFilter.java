@@ -20,7 +20,7 @@ import java.util.List;
 public class AuthFilter implements WebFilter {
 
     private static final List<String> PUBLIC_PATHS = List.of(
-            "/api/auth/", "/api/route/health", "/api/route/profiles"
+            "/api/auth/", "/api/route/health", "/api/route/profiles", "/api/route/pois"
     );
 
     private final AuthService authService;
