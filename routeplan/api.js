@@ -463,35 +463,30 @@ function buildQueryFromScene(scene, answers) {
   return parts.join('，');
 }
 
-// ─── API call with mock fallback ──────────────────────────────────
+// ─── API calls (backend as single source of truth) ──────────────────
 
 /**
- * Call planRoute with automatic fallback to mock ROUTE_OPTIONS data.
- * Used by both NL and scene-tap paths.
+ * Plan a route via the backend.
+ * Tries agent-plan (if agentMode) → /plan → /smart-plan in order.
+ * All data comes from backend — no frontend mock fallback.
  */
 async function planWithFallback(query, scene, answers, city, intent) {
-  // Agent mode: try agent-plan first before falling through to the normal chain
+  // Agent mode: try agent-plan first
   if (_isAgentMode) {
     try {
       var agentResult = await agentPlan(query, null, city, _currentUserId);
       if (agentResult && agentResult.routes && agentResult.routes.length > 0) {
         return agentResult;
       }
-      console.warn('Agent-plan returned empty routes in planWithFallback, trying /plan');
-    } catch (e) {
-      console.warn('Agent-plan failed in planWithFallback:', e.message);
-    }
+    } catch (e) { console.warn('Agent-plan failed:', e.message); }
   }
 
   try {
     const result = await planRoute(query, null, city, intent || null);
     if (result.routes.length > 0) return result;
-    console.warn('/plan returned empty routes, trying /smart-plan');
-  } catch (e) {
-    console.warn('/plan failed, trying /smart-plan:', e.message);
-  }
+  } catch (e) { console.warn('/plan failed:', e.message); }
 
-  // Fallback: try /smart-plan with full analysis pipeline (backend mock data)
+  // Fallback: try /smart-plan
   try {
     const smartResult = await smartPlan(query, null, city);
     if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
@@ -502,116 +497,36 @@ async function planWithFallback(query, scene, answers, city, intent) {
         recommendedRoute: smartResult._routes[0] || null,
       };
     }
-  } catch (e2) {
-    console.warn('/smart-plan also failed:', e2.message);
-  }
+  } catch (e2) { console.warn('/smart-plan also failed:', e2.message); }
 
-  // All backend calls exhausted — return empty with user-facing warning
+  // Backend unavailable — no frontend mock fallback
   return {
     sessionId: 'err-' + Date.now(),
     routes: [],
-    warning: '服务暂时不可用，请检查网络后重试',
+    warning: '后端服务暂时不可用，请检查网络后重试',
     recommendedRoute: null,
+  };
+}
   };
 }
 
 /**
- * Call adjustRoute with automatic mock fallback.
- * When backend is unavailable, reorder/filter mock routes based on chip label
- * so the user sees a visible change instead of the same results.
+ * Adjust a route via the backend.
+ * All data comes from backend — no frontend mock fallback.
  */
 async function adjustWithFallback(sessionId, adjustment, currentRoutes, city, scene, answers) {
   try {
     const result = await adjustRoute(sessionId, adjustment, city);
     if (result.routes.length > 0) return result;
-  } catch (e) {
-    console.warn('Backend API unavailable for adjust:', e.message);
-  }
+  } catch (e) { console.warn('Backend API unavailable for adjust:', e.message); }
 
-  // All backend calls exhausted — return empty with warning
+  // Backend unavailable — no frontend mock fallback
   return {
     sessionId: sessionId || ('err-' + Date.now()),
     routes: [],
-    warning: '调整失败，请稍后重试',
+    warning: '调整失败，后端服务不可用，请稍后重试',
     recommendedRoute: null,
   };
-}
-
-/** Reorder/filter routes based on chip label. */
-function parseTime(timeStr) {
-  if (!timeStr) return 999;
-  var hMatch = timeStr.match(/(\d+)\s*小时/);
-  var mMatch = timeStr.match(/(\d+)\s*分钟/);
-  var h = hMatch ? parseInt(hMatch[1], 10) : 0;
-  var m = mMatch ? parseInt(mMatch[1], 10) : 0;
-  return h * 60 + m;
-}
-
-function mockAdjustRoutes(routes, label) {
-  var arr = routes.slice();
-  if (arr.length <= 1) return arr;
-
-  switch (label) {
-    case '更便宜':
-      // Sort by total_avg ascending
-      arr.sort(function(a, b) { return (a.total_avg || 0) - (b.total_avg || 0); });
-      break;
-    case '少走路':
-      // Sort by total_distance — parse numeric value from "1.6km" format
-      arr.sort(function(a, b) {
-        var da = parseFloat((a.total_distance || '99km').replace(/[^0-9.]/g, '')) || 99;
-        var db = parseFloat((b.total_distance || '99km').replace(/[^0-9.]/g, '')) || 99;
-        return da - db;
-      });
-      break;
-    case '不想排队':
-      // Move routes with queue-related risks to the end
-      arr.sort(function(a, b) {
-        var aRisk = (a.risks || []).some(function(r) { return r.indexOf('排队') !== -1 || r.indexOf('等位') !== -1; }) ? 1 : 0;
-        var bRisk = (b.risks || []).some(function(r) { return r.indexOf('排队') !== -1 || r.indexOf('等位') !== -1; }) ? 1 : 0;
-        return aRisk - bRisk;
-      });
-      break;
-    case '更出片':
-      // Move photo-friendly routes to the front
-      arr.sort(function(a, b) {
-        var aPhoto = (a.positioning || '').indexOf('出片') !== -1 || (a.reason || '').indexOf('拍照') !== -1 || (a.reason || '').indexOf('出片') !== -1 ? 0 : 1;
-        var bPhoto = (b.positioning || '').indexOf('出片') !== -1 || (b.reason || '').indexOf('拍照') !== -1 || (b.reason || '').indexOf('出片') !== -1 ? 0 : 1;
-        return aPhoto - bPhoto;
-      });
-      break;
-    case '地铁优先':
-      // Move subway routes to front
-      arr.sort(function(a, b) {
-        var aSub = (a.transport || '').indexOf('地铁') !== -1 ? 0 : 1;
-        var bSub = (b.transport || '').indexOf('地铁') !== -1 ? 0 : 1;
-        return aSub - bSub;
-      });
-      break;
-    case '换个口味':
-      // Rotate — move first route to end
-      arr.push(arr.shift());
-      break;
-    case '更安静':
-      // Move routes with quiet/relaxed positioning to the front
-      arr.sort(function(a, b) {
-        var aQuiet = (a.reason || '').indexOf('安静') !== -1 || (a.positioning || '').indexOf('安静') !== -1 || (a.reason || '').indexOf('放松') !== -1 ? 0 : 1;
-        var bQuiet = (b.reason || '').indexOf('安静') !== -1 || (b.positioning || '').indexOf('安静') !== -1 || (b.reason || '').indexOf('放松') !== -1 ? 0 : 1;
-        return aQuiet - bQuiet;
-      });
-      break;
-    case '更省时':
-      // Sort by total_time — parse numeric minutes from "X 分钟" or "X 小时" format
-      arr.sort(function(a, b) {
-        var ta = parseTime(a.total_time) || 999;
-        var tb = parseTime(b.total_time) || 999;
-        return ta - tb;
-      });
-      break;
-    default:
-      break;
-  }
-  return arr;
 }
 
 // ─── POI data API (unified backend source) ─────────────────────
@@ -764,7 +679,7 @@ Object.assign(window, {
   planRoute, adjustRoute, analyzeIntent, smartPlan,
   agentPlan, isAgentMode, setAgentMode,
   buildQueryFromScene,
-  planWithFallback, adjustWithFallback, mockAdjustRoutes,
+  planWithFallback, adjustWithFallback,
   mapRoute, mapPlanResponse,
   fmtDuration, fmtDistance,
   saveFavorite, getFavorites, deleteFavorite,
