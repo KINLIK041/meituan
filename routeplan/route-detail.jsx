@@ -60,7 +60,8 @@ function _buildDetailData(route) {
         status_tone: 'green',
         wait_time: (poi.queueTime || 0) > 0 ? '约 ' + Math.round(poi.queueTime) + ' 分钟' : '无需排队',
         tags: poi.tags || [],
-        risk_tags: [],
+        risk_tags: poi.riskTags || [],
+        ugcSummary: poi.ugcSummary || '',
         recommendation_reason: poi.description || '',
         imageUrl: imgUrl,
         images: deriveImages(imgUrl),
@@ -156,7 +157,8 @@ function _buildDetailData(route) {
         opening_hours: p.opening_hours || p.openTime || '—',
         current_status: '营业中', current_status_short: '营业中', status_tone: 'green',
         wait_time: p.wait_time || '无需排队',
-        tags: p.tags || [], risk_tags: [],
+        tags: p.tags || [], risk_tags: p.riskTags || p.risk_tags || [],
+        ugcSummary: p.ugcSummary || '',
         recommendation_reason: p.recommendation_reason || p.reason || p.description || '',
         imageUrl: p.imageUrl || '',
         images: deriveImages(p.imageUrl || ''),
@@ -713,6 +715,93 @@ function OverviewCard({ routeInfo }) {
 
 }
 
+// ─── Constraint match status card ───────────────────────────────
+function ConstraintMatchCard({ constraintMatch }) {
+  if (!constraintMatch) return null;
+  return (
+    <div style={{
+      margin: '12px 14px 0', padding: '10px 12px',
+      background: '#F7F7F8', borderRadius: 14, border: '1px solid #EDEDEF',
+    }}>
+      <div style={{ fontSize: 11, color: '#8E8E93', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Icon name="CheckCircle2" size={12} color="#8E8E93" />
+        约束满足状态
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        {[
+          { label: '预算', value: constraintMatch.budget, icon: 'Wallet' },
+          { label: '排队', value: constraintMatch.queue, icon: 'Clock' },
+          { label: '营业', value: constraintMatch.open_time, icon: 'Store' },
+          { label: '距离', value: constraintMatch.distance, icon: 'Footprints' },
+        ].map(function(item) {
+          var isOk = item.value === '符合' || item.value === '适中';
+          return (
+            <div key={item.label} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 11.5, padding: '6px 8px',
+              background: '#fff', borderRadius: 6,
+            }}>
+              <Icon name={item.icon} size={11} color={isOk ? '#1F8B4C' : '#D14600'} />
+              <span style={{ color: '#8E8E93' }}>{item.label}</span>
+              <span style={{
+                marginLeft: 'auto', fontWeight: 600,
+                color: isOk ? '#1F8B4C' : '#D14600',
+                fontSize: 11,
+              }}>{item.value}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Preference match card ──────────────────────────────────────
+function PreferenceMatchCard({ route }) {
+  if (!route) return null;
+  var hasTags = route._preferenceMatchTags && route._preferenceMatchTags.length > 0;
+  var hasScore = route._preferenceScore != null;
+  if (!hasTags && !hasScore) return null;
+  return (
+    <div style={{
+      margin: '12px 14px 0', padding: '10px 12px',
+      background: 'linear-gradient(135deg, #F0F7FF 0%, #F5F9FC 100%)',
+      borderRadius: 14, border: '1px solid #D0E4F7',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: '#2456a6', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Icon name="Sparkles" size={12} color="#2456a6" />
+          匹配你的历史偏好
+        </div>
+        {hasScore && (
+          <span className="num" style={{
+            fontSize: 12, fontWeight: 700, color: '#2456a6',
+            background: '#E6EEF8', padding: '2px 8px', borderRadius: 999,
+          }}>
+            偏好匹配 {route._preferenceScore} 分
+          </span>
+        )}
+      </div>
+      {hasTags && (
+        <div style={{ fontSize: 11.5, color: '#48484A', lineHeight: 1.5, marginBottom: 6 }}>
+          因为你过去偏好「{route._preferenceMatchTags.slice(0, 3).join('、')}」{route._preferenceMatchTags.length > 3 ? '等' : ''}，这条路线优先匹配这些偏好。
+        </div>
+      )}
+      {hasTags && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {route._preferenceMatchTags.map(function(tag) { return (
+            <span key={tag} style={{
+              background: '#E6EEF8', color: '#2456a6',
+              padding: '2px 8px', borderRadius: 999,
+              fontSize: 11, fontWeight: 500,
+            }}>{tag}</span>
+          );})}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Compact place block (no outer card) ───────────────────────
 // Renders the POI content flush against the timeline rail, with a thin divider only.
 function PlaceBlock({ place, index, active, onClick, onDetail, onSwap, onImageOpen }) {
@@ -767,8 +856,22 @@ function PlaceBlock({ place, index, active, onClick, onDetail, onSwap, onImageOp
           {place.opening_hours}
         </StatusPillSm>
         {place.tags.map((t) => <TagSm key={t} tone="green">{t}</TagSm>)}
-        {place.risk_tags.map((t) => <TagSm key={t} tone="amber">⚠ {t}</TagSm>)}
+        {place.risk_tags.map((t) => <TagSm key={t} tone="red">{t}</TagSm>)}
       </div>
+
+      {/* ugc review summary */}
+      {place.ugcSummary ? (
+        <div style={{
+          background: 'linear-gradient(135deg, #FFF8F0 0%, #FFFBF6 100%)',
+          borderRadius: 10, border: '1px solid #FFE4CC',
+          padding: '8px 10px', marginBottom: 9,
+          fontSize: 11, color: '#6E6E73', lineHeight: 1.5,
+          display: 'flex', alignItems: 'flex-start', gap: 5,
+        }}>
+          <span style={{ flexShrink: 0, fontSize: 11 }}>💬</span>
+          <span><span style={{ fontWeight: 600, color: '#1a1a1a' }}>{place.name}</span>：{place.ugcSummary}</span>
+        </div>
+      ) : null}
 
       {/* image gallery — real photos with gradient fallback */}
       <div style={{
@@ -862,7 +965,8 @@ function StatusPillSm({ tone = 'green', children, dot = true }) {
 function TagSm({ tone = 'green', children }) {
   const tones = {
     green: { bg: '#EAF6EC', fg: '#2c7a44' },
-    amber: { bg: '#FFF1DE', fg: '#D14600' }
+    amber: { bg: '#FFF1DE', fg: '#D14600' },
+    red:   { bg: '#FCE9E5', fg: '#B43421' }
   };
   const t = tones[tone] || tones.green;
   return (
@@ -1462,6 +1566,12 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
 
         {/* compact overview */}
         <OverviewCard routeInfo={routeInfo} />
+
+        {/* constraint match status */}
+        <ConstraintMatchCard constraintMatch={route.constraintMatch} />
+
+        {/* preference match score */}
+        <PreferenceMatchCard route={route} />
 
         {/* section header */}
         <div style={{

@@ -41,6 +41,13 @@ function setSessionId(id) { _sessionId = id; }
 function getCurrentUserId() { return _currentUserId; }
 function setCurrentUserId(id) { _currentUserId = id; }
 
+// ─── Agent mode toggle ────────────────────────────────────────────
+var _isAgentMode = false;
+var _noAgentRecurse = false;  // guard against recursion when agentPlan falls back to smartPlan
+
+function isAgentMode() { return _isAgentMode; }
+function setAgentMode(v) { _isAgentMode = !!v; }
+
 // ─── User profiles ────────────────────────────────────────────────
 
 async function getUserProfiles() {
@@ -201,6 +208,34 @@ function mapPlanResponse(data) {
  * or null when the backend is unreachable.
  */
 async function smartPlan(query, sessionId, city) {
+  // Agent mode: delegate to agent-plan first, fall back to smart-plan on failure
+  if (_isAgentMode && !_noAgentRecurse) {
+    try {
+      var agentResult = await agentPlan(query, sessionId, city, _currentUserId);
+      if (agentResult && agentResult.routes && agentResult.routes.length > 0) {
+        // Convert PlanResponse to smartPlan-compatible format
+        return {
+          stage: 'complete',
+          summaryText: null,
+          intent: null,
+          sessionId: agentResult.sessionId,
+          _routes: agentResult.routes,
+          _questions: null,
+          _conflicts: null,
+          warning: agentResult.warning || null,
+          followupQuestions: [],
+          conflicts: [],
+          preferenceMatchTags: null,
+          preferenceScores: null,
+          ugcMatchTags: null,
+          ugcSummaries: null,
+        };
+      }
+    } catch (e) {
+      console.warn('Agent-plan delegation in smartPlan failed:', e.message);
+    }
+  }
+
   try {
     const body = { query: query, sessionId: sessionId || null, city: city || null, userId: _currentUserId || null };
     const res = await fetchWithTimeout(API_BASE + '/api/route/smart-plan', {
@@ -253,6 +288,48 @@ async function smartPlan(query, sessionId, city) {
     return data;
   } catch (e) {
     console.warn('Smart-plan API unavailable:', e.message);
+    return null;
+  }
+}
+
+/**
+ * POST /api/route/agent-plan — LLM-driven Agent Loop architecture.
+ * 1 main Agent dynamically calls 7 tools instead of the fixed 5-agent pipeline.
+ * Returns PlanResponse format (same as /api/route/plan).
+ * Falls back to smartPlan if the agent-plan endpoint is unavailable.
+ */
+async function agentPlan(query, sessionId, city, userId) {
+  try {
+    var body = { query: query, sessionId: sessionId || null, city: city || null, userId: userId || _currentUserId || null };
+    var res = await fetchWithTimeout(API_BASE + '/api/route/agent-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('Agent-plan API error: ' + res.status);
+    var data = await res.json();
+    if (data.sessionId) setSessionId(data.sessionId);
+    return mapPlanResponse(data);
+  } catch (e) {
+    console.warn('Agent-plan API unavailable:', e.message);
+    // Fallback to smartPlan, guarded against recursion
+    if (_noAgentRecurse) return null;
+    _noAgentRecurse = true;
+    try {
+      var smartResult = await smartPlan(query, sessionId, city);
+      if (smartResult && smartResult._routes && smartResult._routes.length > 0) {
+        return {
+          sessionId: smartResult.sessionId || ('agfb-' + Date.now()),
+          routes: smartResult._routes,
+          warning: null,
+          recommendedRoute: smartResult._routes[0] || null,
+        };
+      }
+    } catch (e2) {
+      console.warn('Agent-plan fallback to smartPlan also failed:', e2.message);
+    } finally {
+      _noAgentRecurse = false;
+    }
     return null;
   }
 }
@@ -393,6 +470,19 @@ function buildQueryFromScene(scene, answers) {
  * Used by both NL and scene-tap paths.
  */
 async function planWithFallback(query, scene, answers, city, intent) {
+  // Agent mode: try agent-plan first before falling through to the normal chain
+  if (_isAgentMode) {
+    try {
+      var agentResult = await agentPlan(query, null, city, _currentUserId);
+      if (agentResult && agentResult.routes && agentResult.routes.length > 0) {
+        return agentResult;
+      }
+      console.warn('Agent-plan returned empty routes in planWithFallback, trying /plan');
+    } catch (e) {
+      console.warn('Agent-plan failed in planWithFallback:', e.message);
+    }
+  }
+
   try {
     const result = await planRoute(query, null, city, intent || null);
     if (result.routes.length > 0) return result;
@@ -524,6 +614,64 @@ function mockAdjustRoutes(routes, label) {
   return arr;
 }
 
+// ─── POI data API (unified backend source) ─────────────────────
+
+/**
+ * Fetch POI data from the backend for a given city.
+ * Returns an array of POI objects with all fields (UGC, riskTags, etc.).
+ * Falls back to null when the backend is unreachable — callers should use
+ * the existing frontend mock data in that case.
+ */
+async function fetchPOIsFromBackend(city) {
+  try {
+    var url = API_BASE + '/api/route/pois?city=' + encodeURIComponent(city || '北京');
+    var res = await fetchWithTimeout(url, {}, 8000);
+    if (!res.ok) return null;
+    var pois = await res.json();
+    if (!pois || pois.length === 0) return null;
+    // Adapt backend POI format to frontend ALL_PLACES format
+    return pois.map(function(p) {
+      return {
+        id: p.id,
+        name: p.name,
+        short: p.name,
+        category: p.subCategory || p.category || '',
+        subcategory: p.subCategory || '',
+        rating: p.rating || 0,
+        review_count: 0,
+        avg_price: p.avgCost || 0,
+        opening_hours: '',
+        current_status: '营业中',
+        current_status_short: '营业中',
+        status_tone: 'green',
+        wait_time: (p.queueTime > 10) ? '约 ' + p.queueTime + ' 分钟' : '无需排队',
+        tags: p.tags || [],
+        ugcTags: p.ugcTags || [],
+        ugcSummary: p.ugcSummary || '',
+        risk_tags: p.riskTags || [],
+        recommendation_reason: p.description || '',
+        review_summary: p.ugcSummary || (p.tags || []).join('、'),
+        lng: p.lng,
+        lat: p.lat,
+        imageUrl: p.imageUrl || '',
+        images: p.imageUrl ? [p.imageUrl] : [],
+        address: p.address || '',
+        city: p.city || city,
+        district: p.district || '',
+        targetAudience: [],
+        bestTime: '',
+        duration: '',
+        popularityScore: p.popularityScore || 0,
+        mock_x: Math.round(((p.lng - 115.5) / (122 - 115.5)) * 100),
+        mock_y: Math.round(((41 - p.lat) / (41 - 30.5)) * 100),
+      };
+    });
+  } catch (e) {
+    console.warn('Backend POI fetch unavailable, using mock data:', e.message);
+    return null;
+  }
+}
+
 // ─── Favorites API (with in-memory fallback) ───────────────────
 
 // Shared in-memory store — survives panel close/open within the session.
@@ -614,9 +762,11 @@ Object.assign(window, {
   getCurrentUserId, setCurrentUserId,
   getUserProfiles,
   planRoute, adjustRoute, analyzeIntent, smartPlan,
+  agentPlan, isAgentMode, setAgentMode,
   buildQueryFromScene,
   planWithFallback, adjustWithFallback, mockAdjustRoutes,
   mapRoute, mapPlanResponse,
   fmtDuration, fmtDistance,
   saveFavorite, getFavorites, deleteFavorite,
+  fetchPOIsFromBackend,
 });

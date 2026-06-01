@@ -26,9 +26,11 @@
       status_tone: 'green',
       wait_time: '无需排队',
       tags: p.tags || [],
-      risk_tags: [],
+      ugcTags: p.ugcTags || [],
+      ugcSummary: p.ugcSummary || '',
+      risk_tags: p.riskTags || [],
       recommendation_reason: p.description || '',
-      review_summary: (p.tags || []).join('、'),
+      review_summary: p.ugcSummary || (p.tags || []).join('、'),
       lng: p.lng,
       lat: p.lat,
       imageUrl: (p.images && p.images[0]) || '',
@@ -308,6 +310,40 @@
 
   // Initial load
   window.refreshMockPlaces(window._currentCity);
+
+  // ─── Backend POI sync — replaces mock data with backend POIs when available ───
+  window.syncPOIsFromBackend = async function(city) {
+    city = city || window._currentCity || '北京';
+    if (!window.fetchPOIsFromBackend) return null;
+    try {
+      var backendPOIs = await window.fetchPOIsFromBackend(city);
+      if (!backendPOIs || backendPOIs.length < 5) return null;
+      // Build dictionary from backend POIs
+      var dict = {};
+      backendPOIs.forEach(function(p) {
+        var key = p.name;
+        while (dict[key]) key = p.name + ' (' + p.district + ')';
+        dict[key] = p;
+      });
+      // Replace city-specific dictionary while keeping fallback
+      if (city === '上海') {
+        window.ALL_PLACES_SHANGHAI = dict;
+      } else {
+        window.ALL_PLACES_BEIJING = dict;
+      }
+      // Also merge into ALL_PLACES global dict
+      Object.assign(window.ALL_PLACES, dict);
+      window.refreshMockPlaces(city);
+      console.log('[syncPOIs] Loaded ' + backendPOIs.length + ' POIs from backend for ' + city);
+      return backendPOIs.length;
+    } catch (e) {
+      console.warn('[syncPOIs] Backend unavailable, using mock data:', e.message);
+      return null;
+    }
+  };
+
+  // Try backend sync on load (non-blocking — mock data shown immediately)
+  setTimeout(function() { window.syncPOIsFromBackend(window._currentCity); }, 200);
 
   // Listen for city changes
   var _origCitySetter = Object.getOwnPropertyDescriptor(window, '_currentCity');

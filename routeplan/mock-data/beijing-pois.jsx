@@ -491,6 +491,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-053-1.jpg'],
     description: '可边品尝烤鸭边欣赏故宫东华门景观的网红烤鸭店',
     targetAudience: ['游客', '情侣', '美食爱好者', '摄影爱好者'], bestTime: '晚餐(看夜景)', duration: '1.5-2小时',
+    ugcTags: ['故宫景观绝美', '烤鸭正宗', '拍照出片', '景观位难抢', '排队太久', '节假日崩溃'],
+    ugcSummary: '坐在窗边看着故宫角楼吃烤鸭的体验确实独一无二，烤鸭品质也过硬。但景观位需要早到2小时排队等号，节假日基本放弃幻想',
+    riskTags: ['景观位排队2小时+', '节假日无法预约', '翻台率低等待时间长'],
   },
   {
     id: 'bj-054', name: '护国寺小吃(总店)', category: 'food', subcategory: '北京小吃',
@@ -666,6 +669,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-072-1.jpg'],
     description: '以梨汤闻名的京菜馆，菜品精致，适合家庭聚餐',
     targetAudience: ['家庭', '亲子', '本地居民', '游客'], bestTime: '午餐或晚餐', duration: '1.5小时',
+    ugcTags: ['梨汤好喝', '京味正宗', '老少皆宜', '排队久', '上菜慢', '停车难'],
+    ugcSummary: '一壶小吊梨汤温润甘甜确实名不虚传，菜品也地道。但节假日排队太可怕了，周围停车也是个大问题',
+    riskTags: ['节假日排队1小时+', '周边停车位极少', '上菜速度慢'],
   },
   {
     id: 'bj-073', name: '局气(德云社店)', category: 'food', subcategory: '北京菜',
@@ -693,6 +699,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-075-1.jpg'],
     description: '知名江浙菜连锁，性价比高，适合家庭聚餐',
     targetAudience: ['家庭', '学生', '上班族', '情侣'], bestTime: '午餐或晚餐', duration: '1小时',
+    ugcTags: ['性价比高', '上菜快', '适合家庭', '排队久', '环境一般', '味道普通'],
+    ugcSummary: '性价比确实高，但周末排队至少40分钟，环境像大食堂比较嘈杂，菜品口味中规中矩没啥惊艳',
+    riskTags: ['周末排队久', '环境嘈杂', '高峰时段限时就餐'],
   },
   {
     id: 'bj-076', name: '胡大饭馆(簋街总店)', category: 'food', subcategory: '川菜',
@@ -702,6 +711,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-076-1.jpg'],
     description: '簋街最著名的龙虾店，北京夜宵文化的代表',
     targetAudience: ['年轻人', '夜宵族', '朋友聚会', '情侣'], bestTime: '晚餐或夜宵', duration: '2小时',
+    ugcTags: ['麻小一绝', '深夜营业', '簋街地标', '排队吓人', '等号等到崩溃', '环境嘈杂'],
+    ugcSummary: '北京的夜宵之王，麻辣小龙虾配啤酒是夏天标配，凌晨5点还营业太良心了。但排号200+是常态，建议工作日晚上10点后再来',
+    riskTags: ['排队200+号', '深夜周边交通不便', '环境嘈杂卫生一般'],
   },
   {
     id: 'bj-077', name: '丰泽园饭庄(珠市口店)', category: 'food', subcategory: '鲁菜',
@@ -720,6 +732,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-078-1.jpg'],
     description: '源自台湾的米其林星级餐厅，以小笼包闻名',
     targetAudience: ['美食爱好者', '商务人士', '情侣', '家庭'], bestTime: '午餐或晚餐', duration: '1.5小时',
+    ugcTags: ['小笼包正宗', '服务优秀', '环境雅致', '适合约会', '上菜有序', '价格小贵'],
+    ugcSummary: '18摺小笼包皮薄汤鲜名不虚传，服务生训练有素，环境安静雅致特别适合商务宴请和约会',
+    riskTags: [],
   },
   {
     id: 'bj-079', name: 'Shake Shack(三里屯店)', category: 'food', subcategory: '西餐',
@@ -729,6 +744,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-079-1.jpg'],
     description: '来自纽约的网红汉堡店，北京首店',
     targetAudience: ['年轻人', '外国游客', '情侣', '快餐爱好者'], bestTime: '午餐或晚餐', duration: '1小时',
+    ugcTags: ['汉堡好吃', '氛围轻松', '出片好看', '价格偏高', '排队太久', '座位难找'],
+    ugcSummary: '牛肉汉堡确实比普通快餐好吃很多，但人均80买个汉堡还是有点肉疼，周末找座位像打仗',
+    riskTags: ['周末排队超30分钟', '高峰无座需外带', '价格与份量不成正比'],
   },
   {
     id: 'bj-080', name: '京A Taproom(隆福寺店)', category: 'food', subcategory: '酒吧',
@@ -877,6 +895,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-095-1.jpg'],
     description: '以正宗老北京炸酱面闻名的老字号餐馆',
     targetAudience: ['游客', '本地居民', '美食爱好者', '家庭'], bestTime: '午餐或晚餐', duration: '1小时',
+    ugcTags: ['炸酱面地道', '量大实惠', '老北京味道', '服务冷淡', '环境老旧', '不能手机点单'],
+    ugcSummary: '炸酱面的酱是现炸的，面条筋道配菜也全，一碗下去超满足。但服务员都是阿姨级别的，态度比较冷淡，环境也是老派装修',
+    riskTags: [],
   },
   {
     id: 'bj-096', name: '眉州东坡(王府井店)', category: 'food', subcategory: '川菜',
@@ -895,6 +916,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-097-1.jpg'],
     description: '以"书房里的养生面"为特色的面食连锁品牌',
     targetAudience: ['上班族', '学生', '一人食', '快餐需求者'], bestTime: '午餐或晚餐', duration: '30分钟-1小时',
+    ugcTags: ['一人食友好', '面汤浓郁', '环境安静', '份量偏少', '价格偏高', '品类单一'],
+    ugcSummary: '书房环境确实安静舒服，一个人来吃很自在，但40块一碗面国贸上班族也喊贵，而且份量对男生来说不太够',
+    riskTags: [],
   },
   {
     id: 'bj-098', name: '喜茶(三里屯店)', category: 'food', subcategory: '茶饮',
@@ -904,6 +928,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-098-1.jpg'],
     description: '知名新式茶饮品牌，以芝士茶闻名',
     targetAudience: ['年轻人', '学生', '情侣', '白领'], bestTime: '下午', duration: '30分钟',
+    ugcTags: ['多肉葡萄好喝', '出杯快', '小程序方便', '排队久', '太吵', '座位少'],
+    ugcSummary: '小程序提前下单能省不少时间，但店里永远人山人海吵得像菜市场，想找个座位坐下来喝基本不可能',
+    riskTags: ['店内无座', '高峰出杯慢'],
   },
   {
     id: 'bj-099', name: '星巴克臻选(北京坊店)', category: 'food', subcategory: '咖啡',
@@ -1119,6 +1146,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-121-1.jpg'],
     description: '北京知名日料品牌，食材新鲜，环境优雅，适合约会和商务宴请',
     targetAudience: ['商务人士', '情侣', '日料爱好者', '朋友聚会'], bestTime: '午餐或晚餐', duration: '1-2小时',
+    ugcTags: ['刺身新鲜', '环境安静', '服务周到', '适合约会', '价格偏高', '份量偏小'],
+    ugcSummary: '秋天的童话卷确实惊艳，刺身新鲜度在京城算一流。环境私密安静，约会选这里不会翻车，就是价格对普通打工人不太友好',
+    riskTags: [],
   },
   {
     id: 'bj-122', name: '姜虎东白丁烤肉(三里屯店)', category: 'food', subcategory: '韩餐',
@@ -1128,6 +1158,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-122-1.jpg'],
     description: '韩国人气烤肉品牌，正宗韩式风味，年轻人聚会首选',
     targetAudience: ['年轻人', '韩流粉丝', '朋友聚会', '情侣'], bestTime: '晚餐', duration: '1.5-2小时',
+    ugcTags: ['烤肉好吃', '氛围热闹', '小菜无限续', '适合聚会', '排队久', '油烟味大', '太吵'],
+    ugcSummary: '五花肉烤得滋滋冒油太满足了，小菜无限续很良心，氛围超适合朋友聚会。但油烟味真的很重吃完一身味，而且永远在排队',
+    riskTags: ['油烟味重', '排队时间长', '环境嘈杂不适合安静约会'],
   },
   {
     id: 'bj-123', name: '很久以前羊肉串(簋街店)', category: 'food', subcategory: '烧烤',
@@ -1146,6 +1179,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-124-1.jpg'],
     description: '京城最火的云南菜馆，铜锅油焖鸡是招牌，常年排队',
     targetAudience: ['年轻人', '美食爱好者', '朋友聚会', '情侣'], bestTime: '晚餐', duration: '1-1.5小时',
+    ugcTags: ['油焖鸡一绝', '酸辣开胃', '拍照好看', '排队太久', '服务一般', '不能预约'],
+    ugcSummary: '铜锅油焖鸡配米饭绝了，酸辣口味太上头。但排队真的太可怕了，下午4点去拿号都要等2小时，而且不能预约只能现场排',
+    riskTags: ['排队2小时+', '不能预约', '不接受6人以上聚餐'],
   },
   {
     id: 'bj-125', name: '费大厨辣椒炒肉(朝阳大悦城店)', category: 'food', subcategory: '湘菜',
@@ -1155,6 +1191,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-125-1.jpg'],
     description: '湖南人气湘菜品牌，招牌辣椒炒肉配东北大米饭',
     targetAudience: ['上班族', '学生', '美食爱好者', '家庭'], bestTime: '午餐或晚餐', duration: '1小时',
+    ugcTags: ['下饭神器', '辣椒炒肉正宗', '性价比高', '上菜快', '太辣', '油烟味'],
+    ugcSummary: '辣椒炒肉真的绝了，一碗能干三碗饭，价格也很亲民。但吃不了辣的朋友慎重，微辣都已经很上头了',
+    riskTags: ['辣度较高不适合所有人'],
   },
   {
     id: 'bj-126', name: '云海肴(王府井店)', category: 'food', subcategory: '云南菜',
@@ -1299,6 +1338,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-141-1.jpg'],
     description: '将太无二海淀分店，招牌秋天的童话寿司卷深受欢迎',
     targetAudience: ['上班族', '学生', '情侣', '日料爱好者'], bestTime: '午餐或晚餐', duration: '1-1.5小时',
+    ugcTags: ['寿司好吃', '环境雅致', '适合约会', '工作日人少', '价格偏高', '份量偏小'],
+    ugcSummary: '中关村附近难得的品质日料，秋天的童话卷每次必点。工作日晚餐不用排队太幸福了，就是卷类份量偏小胃口大的得多点几份',
+    riskTags: [],
   },
   {
     id: 'bj-142', name: '胡大饭馆(方庄店)', category: 'food', subcategory: '川菜',
@@ -1317,6 +1359,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-143-1.jpg'],
     description: '老北京铜锅涮肉，手切鲜羊肉是招牌，麻酱调料一绝',
     targetAudience: ['朋友聚会', '家庭', '中老年人', '游客'], bestTime: '晚餐', duration: '1.5小时',
+    ugcTags: ['羊肉鲜嫩', '麻酱一绝', '冬天首选', '排队严重', '环境一般', '服务员少'],
+    ugcSummary: '手切鲜羊肉立盘不倒，麻酱韭菜花配糖蒜就是老北京的冬天味道。但海淀店实在太小了，晚上6点后等位40分钟起步',
+    riskTags: ['晚餐排队久', '店面小座位紧张'],
   },
   {
     id: 'bj-144', name: '大董烤鸭(工体店)', category: 'food', subcategory: '北京菜',
@@ -1326,6 +1371,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-144-1.jpg'],
     description: '大董烤鸭工体旗舰店，酥不腻烤鸭和意境菜是京城一绝',
     targetAudience: ['商务人士', '宴请', '游客', '美食爱好者'], bestTime: '晚餐', duration: '2小时',
+    ugcTags: ['烤鸭顶级', '意境菜惊艳', '环境高级', '服务一流', '价格昂贵', '需要预约'],
+    ugcSummary: '酥不腻烤鸭确实名不虚传，鸭皮蘸白糖入口即化，意境菜的摆盘也像艺术品。人均300+但请客倍有面子，建议提前一周预约包间',
+    riskTags: ['人均消费高', '包间需提前一周预约'],
   },
   {
     id: 'bj-145', name: '江边城外烤全鱼(通州店)', category: 'food', subcategory: '川菜',
@@ -1353,6 +1401,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-147-1.jpg'],
     description: '北京传奇烧烤摊，因烤腰子而出名，望京深夜食堂代表',
     targetAudience: ['年轻人', '夜宵爱好者', '朋友聚会'], bestTime: '夜宵', duration: '1小时',
+    ugcTags: ['深夜食堂', '烤腰子一绝', '烟火气足', '价格实惠', '环境简陋', '卫生一般', '太吵'],
+    ugcSummary: '凌晨两点还人声鼎沸的传奇烤串摊，腰子处理得干净没有怪味。但环境就是路边摊水平，介意的慎来，适合喝啤酒撸串不讲究的朋友',
+    riskTags: ['卫生条件一般', '深夜吵闹', '周边停车困难'],
   },
   {
     id: 'bj-148', name: '京味斋(东直门店)', category: 'food', subcategory: '北京菜',
@@ -1416,6 +1467,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-154-1.jpg'],
     description: '星巴克臻选门店，三层独栋设计，有手冲吧台和特调饮品',
     targetAudience: ['年轻人', '上班族', '情侣', '咖啡爱好者'], bestTime: '下午茶', duration: '1小时',
+    ugcTags: ['三层独栋好看', '手冲专业', '适合办公', '拍照出片', '周末人多', '插座少'],
+    ugcSummary: '三里屯最美的星巴克，三层独栋工业风设计很出片，臻选手冲比普通店好喝不少。但周末基本找不到座位，带电脑办公的话插座太难找了',
+    riskTags: ['周末无座', '插座不足不适合长时间办公'],
   },
   {
     id: 'bj-155', name: '紫光园(通州店)', category: 'food', subcategory: '北京菜',
@@ -1452,6 +1506,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-158-1.jpg'],
     description: '精致江南菜馆，松鼠桂鱼和东坡肉地道正宗',
     targetAudience: ['商务人士', '家庭', '情侣', '美食爱好者'], bestTime: '晚餐', duration: '1.5小时',
+    ugcTags: ['环境雅致', '松鼠桂鱼正宗', '服务贴心', '适合家宴', '价格偏高', '上菜偏慢'],
+    ugcSummary: '万柳附近家庭聚餐首选，江南庭院风装修很有格调，松鼠桂鱼酸甜适中老少都爱。价格比一般商场餐厅高一些但物有所值',
+    riskTags: [],
   },
   {
     id: 'bj-159', name: '悦食悦香(朝阳大悦城店)', category: 'food', subcategory: '自助餐',
@@ -1461,6 +1518,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-159-1.jpg'],
     description: '大型自助餐厅，海鲜日料中餐西餐品类齐全',
     targetAudience: ['家庭', '朋友聚会', '学生', '大胃王'], bestTime: '晚餐', duration: '2小时',
+    ugcTags: ['品种丰富', '海鲜新鲜', '性价比不错', '补菜慢', '环境嘈杂', '限时2小时'],
+    ugcSummary: '种类确实多，三文鱼和甜虾补货还算及时。但热菜区补得慢，高峰期生蚝要排队拿。限时两小时有点赶，聊天聚餐不太尽兴',
+    riskTags: ['限时2小时', '高峰补菜慢', '海鲜排队'],
   },
   {
     id: 'bj-160', name: '陕西面馆(中关村店)', category: 'food', subcategory: '西北菜',
@@ -1470,6 +1530,9 @@ const beijingPOIs = [
     images: ['images/stores/photo-160-1.jpg'],
     description: '正宗陕西面馆，油泼面和肉夹馍是标配，午饭排队王',
     targetAudience: ['上班族', '学生', '一人食', '快餐'], bestTime: '午餐', duration: '30分钟',
+    ugcTags: ['油泼面正宗', '肉夹馍好吃', '性价比极高', '出餐快', '中午排队', '座位少'],
+    ugcSummary: '中关村打工人的午间食堂，油泼面香辣够劲肉夹馍外酥里嫩，35块吃到撑性价比无敌。但中午12点人山人海，建议11点半之前来',
+    riskTags: ['午间排队严重', '座位紧张需拼桌'],
   },
   // ── 景点 (bj-161 ~ bj-200) ──
   {

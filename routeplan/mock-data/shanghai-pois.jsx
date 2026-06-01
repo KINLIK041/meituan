@@ -473,6 +473,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-251-1.jpg'],
     description: '上海最著名的小笼包店，创建于1900年',
     targetAudience: ['游客', '美食爱好者', '家庭', '老年人'], bestTime: '午餐', duration: '1小时',
+    ugcTags: ['小笼包正宗', '百年老店', '游客必打卡', '游客太多', '排队夸张', '服务一般'],
+    ugcSummary: '百年老店的名头确实响亮，小笼包皮薄汤多。但游客实在太多了，排队半小时吃10分钟，二楼堂食有最低消费感觉被宰，更适合外卖窗口带走',
+    riskTags: ['游客扎堆', '二楼最低消费', '排队时间长'],
   },
   {
     id: 'sh-052', name: '绿波廊(豫园店)', category: 'food', subcategory: '上海菜',
@@ -482,6 +485,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-252-1.jpg'],
     description: '上海著名本帮菜馆，接待过众多外国元首',
     targetAudience: ['商务宴请', '游客', '家庭聚餐', '美食爱好者'], bestTime: '午餐或晚餐', duration: '1.5-2小时',
+    ugcTags: ['元首同款', '本帮菜正宗', '环境雅致', '宴请首选', '游客偏多', '价格偏高'],
+    ugcSummary: '接待过克林顿的国宴级本帮菜馆，桂花拉糕和蟹粉小笼是必点。但游客一多用餐体验就打折扣，靠窗看九曲桥的位置要提前很久订',
+    riskTags: ['靠窗位难订', '游客过多影响体验'],
   },
   {
     id: 'sh-053', name: '老正兴菜馆(福州路店)', category: 'food', subcategory: '上海菜',
@@ -518,6 +524,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-256-1.jpg'],
     description: '以服务著称的火锅连锁品牌，24小时营业',
     targetAudience: ['年轻人', '学生', '夜宵族', '聚餐'], bestTime: '晚餐或夜宵', duration: '2小时',
+    ugcTags: ['服务无敌', '深夜首选', '免费美甲', '等位太久', '价格偏高', '太吵'],
+    ugcSummary: '海底捞的服务确实没话说，等位时免费美甲小吃不断，凌晨三点还能吃火锅太幸福。但南京路店永远在排队，人均120吃火锅也不算便宜了',
+    riskTags: ['排队时间长', '高峰等位2小时+'],
   },
   {
     id: 'sh-057', name: '鼎泰丰(新天地店)', category: 'food', subcategory: '台湾菜',
@@ -527,6 +536,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-257-1.jpg'],
     description: '源自台湾的米其林星级餐厅，以小笼包闻名',
     targetAudience: ['美食爱好者', '商务人士', '情侣', '家庭'], bestTime: '午餐或晚餐', duration: '1.5小时',
+    ugcTags: ['小笼包精致', '服务专业', '环境干净', '适合约会', '价格偏高', '份量偏小'],
+    ugcSummary: '新天地逛累了来笼小笼包很惬意，每个18摺精致得像艺术品。但价格确实贵，两个大人轻松吃掉300+，更适合偶尔小资一下',
+    riskTags: [],
   },
   {
     id: 'sh-058', name: '外滩茂悦大酒店·香荟', category: 'food', subcategory: '自助餐',
@@ -545,6 +557,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-259-1.jpg'],
     description: '星巴克海外首家臻选烘焙工坊',
     targetAudience: ['咖啡爱好者', '商务人士', '游客', '年轻人'], bestTime: '上午或下午', duration: '1-2小时',
+    ugcTags: ['咖啡体验棒', '烘焙生产线震撼', '拍照出片', '游客太多', '排队进店', '价格贵'],
+    ugcSummary: '全球最大的星巴克确实震撼，看着咖啡豆从烘焙到出杯的全过程很有意思。但游客实在太多了像个景点不像咖啡馆，一杯手冲卖60+也只能说是体验价了',
+    riskTags: ['游客过多体验差', '周末需排队进店'],
   },
   {
     id: 'sh-060', name: '喜茶(来福士店)', category: 'food', subcategory: '茶饮',
@@ -657,6 +672,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-271-1.jpg'],
     description: '上海著名生煎连锁品牌，皮薄汁多',
     targetAudience: ['游客', '本地居民', '上班族', '美食爱好者'], bestTime: '早餐或午餐', duration: '30分钟',
+    ugcTags: ['生煎汁多', '皮薄底脆', '价格亲民', '出餐快', '排队人多', '店面小'],
+    ugcSummary: '上海生煎的代表，咬一口汤汁四溢小心烫嘴，底煎得金黄酥脆。25块吃饱在上海算良心价了，就是店面太小永远在排队',
+    riskTags: [],
   },
   {
     id: 'sh-072', name: '大壶春(四川中路店)', category: 'food', subcategory: '上海小吃',
@@ -675,6 +693,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-273-1.jpg'],
     description: '上海著名糕点老字号，以青团和条头糕闻名',
     targetAudience: ['游客', '本地居民', '送礼者', '老年人'], bestTime: '全天', duration: '30分钟',
+    ugcTags: ['青团一绝', '伴手礼首选', '价格实惠', '排队人多', '只能外带', '保质期短'],
+    ugcSummary: '沈大成的青团是上海春天最期待的味道，咸蛋黄肉松味永远排长队。只能外带不能堂食有点可惜，当天买当天吃放久了影响口感',
+    riskTags: ['青团季节限定', '只能外带', '排队时间长'],
   },
   {
     id: 'sh-074', name: '杏花楼(福州路总店)', category: 'food', subcategory: '上海菜',
@@ -702,6 +723,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-276-1.jpg'],
     description: '米其林星级餐厅，以台州海鲜闻名',
     targetAudience: ['高端消费者', '商务宴请', '美食爱好者', '情侣'], bestTime: '晚餐', duration: '2小时',
+    ugcTags: ['海鲜新鲜', '米其林品质', '宴请有面子', '价格昂贵', '需提前订位', '服务偶尔冷脸'],
+    ugcSummary: '台州海鲜的新鲜程度确实一流，沙蒜豆面和黄金脆带鱼是必点。请客来这里绝对有面子，但人均400+可能对服务员来说还不够高端，偶尔遇到冷脸',
+    riskTags: ['人均消费高', '需提前订位', '服务不稳定'],
   },
   {
     id: 'sh-077', name: '人和馆(肇嘉浜路店)', category: 'food', subcategory: '上海菜',
@@ -935,6 +959,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-301-1.jpg'],
     description: '藏在老洋房里的米其林本帮菜，红烧肉和蟹粉豆腐是招牌',
     targetAudience: ['商务人士', '宴请', '美食爱好者', '情侣'], bestTime: '晚餐', duration: '2小时',
+    ugcTags: ['老洋房有格调', '菜品精致', '米其林光环', '服务傲慢', '价格虚高', '预约困难', '份量极小', '性价比低'],
+    ugcSummary: '老洋房环境确实独特拍照好看，菜品摆盘也精致。但服务生全程扑克脸，人均350吃完像吃了个前菜，三块红烧肉卖198简直抢钱，预约还要提前两周，再也不来了',
+    riskTags: ['预约需提前两周', '性价比极低', '服务态度傲慢', '份量少吃不饱'],
   },
   {
     id: 'sh-102', name: '雍福会', category: 'food', subcategory: '本帮菜',
@@ -953,6 +980,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-303-1.jpg'],
     description: '上海人从小吃到大的老字号，鲜肉月饼排队王，熟食窗口常年排队',
     targetAudience: ['本地居民', '中老年人', '游客', '美食爱好者'], bestTime: '午餐', duration: '1小时',
+    ugcTags: ['鲜肉月饼一绝', '熟食窗口火爆', '老上海味道', '排队太久', '只能外带', '环境老旧'],
+    ugcSummary: '上海阿姨爷叔的最爱，中秋节前买鲜肉月饼的队伍能排到街角。熟食窗口的酱鸭和熏鱼是小时候的味道，但想坐下来吃顿饭要等很久',
+    riskTags: ['鲜肉月饼季节排队1小时+', '堂食等位久'],
   },
   {
     id: 'sh-104', name: 'Le Bec(新华路店)', category: 'food', subcategory: '法餐',
@@ -1025,6 +1055,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-311-1.jpg'],
     description: '上海最早的泰餐厅之一，泰式咖喱蟹是招牌，新天地环境极佳',
     targetAudience: ['情侣', '朋友聚会', '泰国菜爱好者', '约会'], bestTime: '晚餐', duration: '1.5小时',
+    ugcTags: ['咖喱蟹好吃', '冬阴功正宗', '新天地氛围好', '适合约会', '价格偏贵', '服务偏慢'],
+    ugcSummary: '坐在新天地露天位吃咖喱蟹配椰青太惬意了，冬阴功汤酸辣度刚好。约会氛围满分就是价格在新天地也算贵的，两个人轻松500+',
+    riskTags: ['价格偏高'],
   },
   {
     id: 'sh-112', name: '鸟啸(乌鲁木齐中路店)', category: 'food', subcategory: '日本料理',
@@ -1151,6 +1184,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-325-1.jpg'],
     description: '广州老牌粤菜馆上海分店，啫啫煲是特色，煲仔饭香飘四溢',
     targetAudience: ['朋友聚会', '家庭', '粤菜爱好者', '美食爱好者'], bestTime: '晚餐', duration: '1.5小时',
+    ugcTags: ['煲仔饭一绝', '啫啫煲镬气足', '粤菜地道', '预约方便', '油烟味重', '座位拥挤'],
+    ugcSummary: '啫啫煲上桌时还在滋滋作响太有食欲了，腊味煲仔饭底下的锅巴是灵魂。但店不大座位挤，吃完一身啫啫煲的油烟味',
+    riskTags: ['油烟味重', '座位拥挤'],
   },
   {
     id: 'sh-126', name: '荣小馆(新天地店)', category: 'food', subcategory: '江浙菜',
@@ -1169,6 +1205,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-327-1.jpg'],
     description: '开了30多年的弄堂本帮菜馆，红烧肉和油爆虾是上海家常味',
     targetAudience: ['本地居民', '游客', '美食爱好者', '家庭'], bestTime: '晚餐', duration: '1小时',
+    ugcTags: ['红烧肉一绝', '弄堂氛围好', '本地人认证', '家常味道', '店面小', '不能预约'],
+    ugcSummary: '藏在进贤路弄堂里的宝藏本帮菜馆，红烧肉浓油赤酱甜咸适中，油爆虾壳脆肉嫩。就是店太小只有几张桌子还不能预约，建议掐着开门时间去',
+    riskTags: ['店面小座位少', '不接受预约'],
   },
   {
     id: 'sh-128', name: '星巴克臻选(上海烘焙工坊)', category: 'food', subcategory: '咖啡',
@@ -1178,6 +1217,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-328-1.jpg'],
     description: '星巴克全球最大门店，沉浸式咖啡体验，咖啡豆烘焙生产线',
     targetAudience: ['咖啡爱好者', '年轻人', '游客', '拍照'], bestTime: '下午茶', duration: '1-2小时',
+    ugcTags: ['沉浸式体验', '咖啡品质高', '拍照圣地', '人多嘈杂', '价格昂贵', '等位久'],
+    ugcSummary: '咖啡爱好者的朝圣地，看着豆子从烘焙到萃取的全过程很治愈。但人真的太多了完全没法安静喝咖啡，更像旅游景点。一杯手冲80+只能说是为体验买单',
+    riskTags: ['周末人满为患', '价格偏高', '噪音大不适合谈话'],
   },
   {
     id: 'sh-129', name: 'M Stand(新天地店)', category: 'food', subcategory: '咖啡',
@@ -1313,6 +1355,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-343-1.jpg'],
     description: '纽约神级汉堡上海首店，招牌牛肉堡和上海限定奶昔',
     targetAudience: ['年轻人', '游客', '学生', '汉堡爱好者'], bestTime: '午餐', duration: '30分钟',
+    ugcTags: ['牛肉堡多汁', '奶昔好喝', '新天地位置好', '价格偏高', '排队久', '座位少'],
+    ugcSummary: '牛肉堡确实比普通快餐好吃很多肉饼juicy，上海限定奶昔也有特色。但80块吃个汉堡属实奢侈，新天地这家座位太少了经常要端着吃',
+    riskTags: ['座位紧张', '价格偏高'],
   },
   {
     id: 'sh-144', name: '点都德(静安大悦城店)', category: 'food', subcategory: '粤菜',
@@ -1322,6 +1367,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-344-1.jpg'],
     description: '广州老字号茶楼上海分店，红米肠和虾饺王是必点',
     targetAudience: ['家庭', '朋友聚会', '粤菜爱好者', '游客'], bestTime: '早茶或午餐', duration: '1-1.5小时',
+    ugcTags: ['点心精致', '红米肠必点', '服务热情', '性价比高', '适合家庭', '早茶氛围好', '虾饺晶莹剔透'],
+    ugcSummary: '静安大悦城里性价比超高的早茶，红米肠外酥内嫩虾饺皮薄馅大，服务员阿姨特别热情一直帮忙添茶。人均100吃到撑还打包，比隔壁那些米其林洋房实在太多了，周末带爸妈来超开心',
+    riskTags: [],
   },
   {
     id: 'sh-145', name: '久久滴水洞(进贤路店)', category: 'food', subcategory: '创意菜',
@@ -1340,6 +1388,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-346-1.jpg'],
     description: '上海顶级蟹宴餐厅，秃黄油捞饭是秋季限定极品',
     targetAudience: ['商务宴请', '美食家', '高端消费', '大闸蟹爱好者'], bestTime: '秋季(蟹季)', duration: '2小时',
+    ugcTags: ['蟹宴顶级', '秃黄油一绝', '秋季限定', '服务优秀', '价格昂贵', '非蟹季菜品少'],
+    ugcSummary: '上海蟹宴的天花板，秃黄油捞饭蟹香浓郁拌饭能干掉三碗。但人均350只有蟹季来才值，其他季节菜单少了很多选择，建议9-11月来',
+    riskTags: ['非蟹季体验下降', '人均较高'],
   },
   {
     id: 'sh-147', name: '本帮菜馆(瑞金二路店)', category: 'food', subcategory: '本帮菜',
@@ -1358,6 +1409,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-348-1.jpg'],
     description: '美国墨西哥快餐连锁，牛肉塔可和芝士玉米片适合快速解决',
     targetAudience: ['年轻人', '学生', '上班族', '快餐'], bestTime: '午餐', duration: '30分钟',
+    ugcTags: ['出餐快', '塔可还行', '价格实惠', '口味一般', '不如美版好吃', '份量小'],
+    ugcSummary: '南京西路附近难得50块能吃饱的地方，牛肉塔可中规中矩。但和美国原版比差了不少，芝士给得吝啬，更适合快速解决午饭',
+    riskTags: [],
   },
   {
     id: 'sh-149', name: '上海老饭店(福佑路店)', category: 'food', subcategory: '本帮菜',
@@ -1367,6 +1421,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-349-1.jpg'],
     description: '创建于1875年的上海菜鼻祖，八宝鸭和扣三丝是经典',
     targetAudience: ['游客', '家庭聚会', '宴请', '中老年人'], bestTime: '晚餐', duration: '1.5小时',
+    ugcTags: ['八宝鸭经典', '百年老店', '上海菜鼻祖', '请客有面子', '游客太多', '环境老旧', '服务一般'],
+    ugcSummary: '上海菜的活化石，八宝鸭软烂入味扣三丝刀工精细。但挨着豫园游客实在太多了，环境也老旧得像80年代国营饭店，服务员态度看运气',
+    riskTags: ['游客过多', '环境老旧', '服务不稳定'],
   },
   {
     id: 'sh-150', name: '蔡嘉法式甜品(新天地店)', category: 'food', subcategory: '甜品',
@@ -1376,6 +1433,9 @@ const shanghaiPOIs = [
     images: ['images/stores/photo-350-1.jpg'],
     description: '上海法式甜品标杆，金牌拿破仑酥每天限量供不应求',
     targetAudience: ['女生', '情侣', '下午茶', '甜品爱好者'], bestTime: '下午茶', duration: '1小时',
+    ugcTags: ['拿破仑一绝', '下午茶首选', '拍照出片', '限量供应', '价格偏高', '排队久'],
+    ugcSummary: '上海拿破仑酥的天花板，酥皮层层分明奶油轻盈不腻，配壶红茶就是完美下午。但每天限量下午两点前就卖完了，想吃一定要早去',
+    riskTags: ['拿破仑每日限量', '周末需排队'],
   },
   {
     id: 'sh-151', name: '谷田稻香(宝山万达店)', category: 'food', subcategory: '快餐',

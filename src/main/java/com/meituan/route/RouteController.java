@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import com.meituan.route.data.DataService;
+import com.meituan.route.model.POI;
+
 import java.util.List;
 import java.util.Map;
 
@@ -23,14 +26,17 @@ public class RouteController {
     private final IntentParser intentParser;
     private final UserProfileService userProfileService;
     private final com.meituan.route.agent.AgentLoopOrchestrator agentLoopOrchestrator;
+    private final DataService dataService;
 
     public RouteController(RoutePlannerOrchestrator orchestrator, IntentParser intentParser,
                            UserProfileService userProfileService,
-                           com.meituan.route.agent.AgentLoopOrchestrator agentLoopOrchestrator) {
+                           com.meituan.route.agent.AgentLoopOrchestrator agentLoopOrchestrator,
+                           DataService dataService) {
         this.orchestrator = orchestrator;
         this.intentParser = intentParser;
         this.userProfileService = userProfileService;
         this.agentLoopOrchestrator = agentLoopOrchestrator;
+        this.dataService = dataService;
     }
 
     @PostMapping(value = "/plan", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -114,6 +120,38 @@ public class RouteController {
                                                                   ServerHttpRequest httpRequest) {
         var userId = resolveUserId(request.userId(), httpRequest);
         return agentLoopOrchestrator.agentPlan(request.query(), request.sessionId(), request.city(), userId);
+    }
+
+    /**
+     * GET /api/route/pois?city=北京 — Return POI data for a city.
+     * Unifies frontend and backend POI data: frontend fetches from this endpoint
+     * instead of maintaining a separate mock dataset.
+     */
+    @GetMapping(value = "/pois", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<List<Map<String, Object>>> getPOIs(@RequestParam(defaultValue = "北京") String city) {
+        return dataService.getAllByCity(city)
+                .map(poi -> Map.<String, Object>ofEntries(
+                        Map.entry("id", poi.id()),
+                        Map.entry("name", poi.name()),
+                        Map.entry("category", poi.category()),
+                        Map.entry("subCategory", poi.subCategory()),
+                        Map.entry("district", poi.district()),
+                        Map.entry("city", poi.city()),
+                        Map.entry("rating", poi.rating()),
+                        Map.entry("avgCost", poi.avgCost()),
+                        Map.entry("queueTime", poi.queueTime()),
+                        Map.entry("tags", poi.tags()),
+                        Map.entry("riskTags", poi.riskTags()),
+                        Map.entry("ugcTags", poi.ugcTags()),
+                        Map.entry("ugcSummary", poi.ugcSummary()),
+                        Map.entry("imageUrl", poi.imageUrl()),
+                        Map.entry("address", poi.address()),
+                        Map.entry("description", poi.description()),
+                        Map.entry("popularityScore", poi.popularityScore()),
+                        Map.entry("lat", poi.lat()),
+                        Map.entry("lng", poi.lng())
+                ))
+                .collectList();
     }
 
     @GetMapping(value = "/health", produces = MediaType.APPLICATION_JSON_VALUE)
