@@ -145,12 +145,13 @@ public class IntentParser {
             previousContext = sb.toString();
         }
 
+        var nowStr = LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
         var prompt = (cityContext + """
 从查询提取JSON（只返回JSON）：
 查询: "%s"%s
-字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认18:00), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
-示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"18:00","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
-""".formatted(query, previousContext, exampleCity));
+字段: city(北京/上海), district(商圈/null), categories(RESTAURANT/SHOPPING/ATTRACTION/ENTERTAINMENT/CULTURE数组), cuisine(菜系/null), startTime(HH:MM,默认当前时间%s), endTime(HH:MM,默认22:00), budget(数字,0=不限), partySize(人数,默认2), minRating(默认3.5), maxQueue(排队分钟,0=不排队,默认30), travelMode(WALKING/DRIVING), goal(BEST_EXPERIENCE/FASTEST/CHEAPEST), keywords(数组), specialRequest(特殊要求/null)
+示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"%s","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
+""".formatted(query, previousContext, nowStr, exampleCity, nowStr));
 
         // Use user's own model + API key if provided, otherwise system default
         var model = (userApiKey != null && !userApiKey.isBlank())
@@ -364,7 +365,7 @@ public class IntentParser {
         String district = null;
         List<String> categories = new ArrayList<>();
         String cuisine = null;
-        var startTime = LocalTime.now().withMinute(0).plusHours(1);
+        var startTime = LocalTime.now().withSecond(0).withNano(0);
         var endTime = LocalTime.of(22, 0);
         double budget = 0;
         int partySize = 2;
@@ -384,7 +385,8 @@ public class IntentParser {
             if (json.contains("\"district\"")) district = extractStringOrNull(json, "district");
             if (json.contains("\"cuisine\"")) cuisine = extractStringOrNull(json, "cuisine");
             if (json.contains("\"startTime\"")) {
-                var st = extractString(json, "startTime", "14:00");
+                var defaultTimeStr = LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                var st = extractString(json, "startTime", defaultTimeStr);
                 try { startTime = LocalTime.parse(st); } catch (Exception ignored) {}
             }
             if (json.contains("\"endTime\"")) {

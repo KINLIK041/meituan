@@ -415,8 +415,9 @@ public class RoutePlannerOrchestrator {
         // Merge special request
         var specialReq = (newIntent.specialRequest() != null && !newIntent.specialRequest().isBlank())
                 ? newIntent.specialRequest() : previous.specialRequest();
-        // Merge time: adjustment LLM returns default times (14:00-22:00); preserve original
-        var startTime = newIntent.startTime() != null && !newIntent.startTime().equals(java.time.LocalTime.of(14, 0))
+        // Merge time: adjustment LLM defaults to current time; preserve original if unchanged
+        var nowSentinel = java.time.LocalTime.now().withSecond(0).withNano(0);
+        var startTime = newIntent.startTime() != null && !newIntent.startTime().equals(nowSentinel)
                 ? newIntent.startTime() : previous.startTime();
         var endTime = newIntent.endTime() != null && !newIntent.endTime().equals(java.time.LocalTime.of(22, 0))
                 ? newIntent.endTime() : previous.endTime();

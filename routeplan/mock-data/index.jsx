@@ -52,7 +52,7 @@
 
     _loading[city] = (async function() {
       try {
-        var API_BASE = window.API_BASE || (window.location.hostname === 'localhost' ? 'http://localhost:8080' : '');
+        var API_BASE = window.API_BASE || (window.location.hostname === 'localhost' ? 'http://localhost:8081' : '');
         var url = API_BASE + '/api/route/pois?city=' + encodeURIComponent(city);
         var res = await (window.fetchWithTimeout || fetch)(url, {}, 10000);
         if (!res.ok) throw new Error('HTTP ' + res.status);

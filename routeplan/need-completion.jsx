@@ -8,12 +8,27 @@ const { useState: useStateNC, useEffect: useEffectNC, useRef: useRefNC } = React
 
 // ─── Per-scenario data ─────────────────────────────────────────
 // `tintIdx` indexes into CARD_TINTS in chat-screen.jsx (peach / green / blue cycle).
+
+// Generate dynamic time options based on current time.
+// Always includes "现在" plus 3 upcoming hourly slots.
+function getDynamicTimeOptions() {
+  var now = new Date();
+  var currentHour = now.getHours();
+  var slots = ['现在'];
+  for (var i = 0; i < 3; i++) {
+    var h = (currentHour + i + 1) % 24;
+    var hh = h < 10 ? '0' + h : '' + h;
+    slots.push(hh + ':00');
+  }
+  return slots;
+}
+
 const SCENARIOS = {
   '朋友聚会': {
     icon: 'Users', tintIdx: 0,
     intro: '我可以帮你规划适合朋友见面、吃饭、聊天或轻活动的路线。先补充几个关键信息。',
     questions: [
-      { id: 'time',   label: '几点出发？',         options: ['现在', '18:00', '19:00', '20:00'] },
+      { id: 'time',   label: '几点出发？',         options: getDynamicTimeOptions() },
       { id: 'place',  label: '想在哪附近规划？',   options: ['当前位置附近', '地铁站附近', '指定商圈', '输入地点'] },
       { id: 'budget', label: '人均预算？',          options: ['¥80 以内', '¥150 以内', '¥200 以内', '自定义'] },
       { id: 'duration', label: '预计玩多久？',      options: ['2 小时内', '3 小时内', '4 小时内', '不限'] },
@@ -24,7 +39,7 @@ const SCENARIOS = {
     icon: 'Heart', tintIdx: 1,
     intro: '我可以帮你规划安静、有氛围的约会路线，兼顾吃饭、拍照和散步。先补充几个关键信息。',
     questions: [
-      { id: 'time',   label: '几点出发？',         options: ['18:00', '19:00', '20:00', '现在'] },
+      { id: 'time',   label: '几点出发？',         options: getDynamicTimeOptions() },
       { id: 'place',  label: '在哪附近？',         options: ['当前位置附近', '地铁站附近', '指定商圈', '输入地点'] },
       { id: 'budget', label: '人均预算？',         options: ['¥150 以内', '¥250 以内', '¥400 以内', '不设上限'] },
       { id: 'duration', label: '预计多久？',       options: ['2 小时内', '3 小时内', '4 小时内', '不限'] },
@@ -35,7 +50,7 @@ const SCENARIOS = {
     icon: 'Coffee', tintIdx: 2,
     intro: '帮你找能慢下来、不被打扰的地方。咖啡、书店、轻食都可以安排，节奏由你决定。',
     questions: [
-      { id: 'time',   label: '几点出发？',     options: ['14:00', '16:00', '18:00', '现在'] },
+      { id: 'time',   label: '几点出发？',     options: getDynamicTimeOptions() },
       { id: 'place',  label: '在哪附近？',     options: ['当前位置附近', '地铁站附近', '指定商圈', '输入地点'] },
       { id: 'budget', label: '预算？',         options: ['¥50 以内', '¥100 以内', '¥200 以内', '不设上限'] },
       { id: 'duration', label: '预计多久？',   options: ['2 小时内', '3 小时内', '4 小时内', '不限'] },
@@ -46,7 +61,7 @@ const SCENARIOS = {
     icon: 'Baby', tintIdx: 0,
     intro: '帮你规划安全、室内可选、不太远的亲子路线，吃饭和玩都能照顾到。',
     questions: [
-      { id: 'time',   label: '几点出发？',       options: ['09:00', '10:00', '14:00', '现在'] },
+      { id: 'time',   label: '几点出发？',       options: getDynamicTimeOptions() },
       { id: 'place',  label: '在哪附近？',       options: ['当前位置附近', '地铁站附近', '指定商圈', '输入地点'] },
       { id: 'budget', label: '人均预算？',       options: ['¥80 以内', '¥150 以内', '¥250 以内', '自定义'] },
       { id: 'duration', label: '预计多久？',     options: ['2 小时内', '4 小时内', '6 小时内', '不限'] },
@@ -57,7 +72,7 @@ const SCENARIOS = {
     icon: 'Soup', tintIdx: 1,
     intro: '帮你找一份热的、不远的、不用等位的晚餐。快进快出，节奏要轻。',
     questions: [
-      { id: 'time',   label: '几点下班出发？',   options: ['18:00', '19:00', '20:00', '现在'] },
+      { id: 'time',   label: '几点下班出发？',   options: getDynamicTimeOptions() },
       { id: 'place',  label: '在哪附近？',       options: ['当前位置附近', '公司附近', '回家路上', '输入地点'] },
       { id: 'budget', label: '今天想花多少？',   options: ['¥40 以内', '¥60 以内', '¥100 以内', '看心情'] },
       { id: 'duration', label: '预计多久？',     options: ['1 小时内', '2 小时内', '3 小时内', '不限'] },
@@ -68,7 +83,7 @@ const SCENARIOS = {
     icon: 'Zap', tintIdx: 2,
     intro: '马上帮你找一个能见面、能等人或能讲事的地方，节奏要快。',
     questions: [
-      { id: 'time',   label: '几点需要？',     options: ['现在', '18:00', '19:00', '20:00'] },
+      { id: 'time',   label: '几点需要？',     options: getDynamicTimeOptions() },
       { id: 'place',  label: '你现在在哪？',   options: ['当前位置', '地铁站附近', '商圈附近', '输入地点'] },
       { id: 'budget', label: '人均预算？',     options: ['不限', '¥80 以内', '¥150 以内', '自定义'] },
       { id: 'duration', label: '预计多久？',   options: ['1 小时内', '2 小时内', '3 小时内', '不限'] },
