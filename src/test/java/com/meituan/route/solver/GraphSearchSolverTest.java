@@ -23,7 +23,7 @@ class GraphSearchSolverTest {
 
     @BeforeEach
     void setUp() {
-        solver = new GraphSearchSolver(new PreferenceScorer());
+        solver = new GraphSearchSolver(new PreferenceScorer(), null);
 
         testPOIs = List.of(
                 new POI("P1", "三里屯太古里", "SHOPPING", "购物中心",

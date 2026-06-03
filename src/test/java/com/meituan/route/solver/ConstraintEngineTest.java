@@ -53,7 +53,7 @@ class ConstraintEngineTest {
 
         assertFalse(constraints.isEmpty());
         assertTrue(constraints.stream().anyMatch(c -> "budget".equals(c.id())));
-        assertTrue(constraints.stream().anyMatch(c -> "time_window".equals(c.id())));
+        assertTrue(constraints.stream().anyMatch(c -> c.id().startsWith("tw_")));
         assertTrue(constraints.stream().anyMatch(c -> "min_rating".equals(c.id())));
     }
 
