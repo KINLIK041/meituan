@@ -32,6 +32,11 @@ public class UserProfileService {
 
     @PostConstruct
     void seedProfiles() {
+        // Ensure seed users have passwords (for persona card login)
+        ensureSeedPassword("user_001");
+        ensureSeedPassword("user_002");
+        ensureSeedPassword("user_003");
+
         if (repo.findByUserId("user_001").isPresent()) {
             log.info("User profiles already seeded, skipping");
             return;
@@ -64,6 +69,8 @@ public class UserProfileService {
         e.setProfileName(profileName);
         e.setPreferredCity(city);
         e.setAvgBudget(budget);
+        // Set default password "1234" for seed users so they can login via persona cards
+        e.setPasswordHash(hashPassword("1234"));
         try {
             e.setFavoriteCategoriesJson(MAPPER.writeValueAsString(favCats));
             e.setPreferenceTagsJson(MAPPER.writeValueAsString(prefTags));
@@ -179,5 +186,26 @@ public class UserProfileService {
                 e.parseAvoidTags() != null ? e.parseAvoidTags() : Map.of(),
                 e.parseHistoryActions() != null ? e.parseHistoryActions() : List.of()
         );
+    }
+
+    /** Ensure seed users have a password set so persona card login works. */
+    private void ensureSeedPassword(String userId) {
+        repo.findByUserId(userId).ifPresent(e -> {
+            if (e.getPasswordHash() == null || e.getPasswordHash().isBlank()) {
+                e.setPasswordHash(hashPassword("1234"));
+                repo.save(e);
+                log.info("Set default password for seed user {}", userId);
+            }
+        });
+    }
+
+    private static String hashPassword(String password) {
+        try {
+            var md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(password.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.Base64.getEncoder().encodeToString(hash);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException("Hash failed", e);
+        }
     }
 }

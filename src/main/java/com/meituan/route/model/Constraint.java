@@ -39,6 +39,12 @@ public record Constraint(
                 priority, 0.3, "Budget limit: ¥" + maxCost, maxCost);
     }
 
+    /** Budget as HARD constraint — routes exceeding this are rejected. */
+    public static Constraint budgetHard(double maxCost) {
+        return new Constraint("budget", ConstraintType.HARD, Scope.GLOBAL,
+                9, 0.4, "Hard budget limit: ¥" + maxCost, maxCost);
+    }
+
     public static Constraint timeWindow(String start, String end, double priority) {
         return new Constraint("time_window", ConstraintType.HARD, Scope.GLOBAL,
                 priority, 0.0, "Time window: " + start + " - " + end,

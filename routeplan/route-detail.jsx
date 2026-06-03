@@ -188,137 +188,177 @@ function _buildDetailData(route) {
   };
 }
 
-// ─── Gaode Map (replaces mock SVG) ──────────────────────────
-function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
-  const containerRef = useRefRD(null);
-  const mapRef = useRefRD(null);
-  const markersRef = useRefRD([]);
-  const H = expanded ? 360 : 220;
-  const amapReady = typeof window.AMap !== 'undefined';
+// ─── Category → color mapping (from WePlan: transport=blue, dining=red, activity=green) ──
+const CATEGORY_COLORS = {
+  '餐饮':  '#E53E3E', '美食': '#E53E3E', '餐厅': '#E53E3E', '咖啡': '#E53E3E', '甜品': '#E53E3E',
+  'RESTAURANT': '#E53E3E',
+  '景点':  '#38A169', '公园': '#38A169', '户外': '#38A169', '历史古迹': '#38A169', '博物馆': '#38A169',
+  'ATTRACTION': '#38A169', 'CULTURE': '#38A169',
+  '购物':  '#3182CE', '商场': '#3182CE', '买手店': '#3182CE',
+  'SHOPPING': '#3182CE',
+  '娱乐':  '#805AD5', '演出': '#805AD5', '展览': '#805AD5',
+  'ENTERTAINMENT': '#805AD5',
+  '交通':  '#718096', '地铁': '#718096',
+  '网红餐厅': '#E53E3E',
+};
+const DEFAULT_MARKER_COLOR = '#FF6633';
 
-  // Fallback to mock SVG if AMap not loaded
-  if (!amapReady) {
-    return <MockMapFallback places={places} activeIdx={activeIdx} onMarker={onMarker} expanded={expanded} />;
+function getCategoryColor(category) {
+  if (!category) return DEFAULT_MARKER_COLOR;
+  for (var key in CATEGORY_COLORS) {
+    if (category.indexOf(key) !== -1) return CATEGORY_COLORS[key];
   }
+  return DEFAULT_MARKER_COLOR;
+}
 
-  // Create map, markers, and polyline — only when AMap is ready and places change
-  useEffectRD(() => {
-    if (!containerRef.current || !window.AMap) return;
-    try {
-    // Destroy previous map if any
-    if (mapRef.current) {
-      mapRef.current.destroy();
-      mapRef.current = null;
-    }
+// ─── MapManager — clean encapsulation of AMap instance, markers, polylines ──
+const MapManager = {
+  create: function(container, places, onMarker) {
+    var self = { map: null, markers: [], polylines: [], _pending: null };
 
-    // Determine center: use first valid coordinate, fallback based on current city
-    var defaultCenter = (window._currentCity === '上海') ? [121.4737, 31.2304] : [116.3972, 39.9163];
-    var center = defaultCenter;
-    for (var k = 0; k < places.length; k++) {
-      var plng = places[k].lng, plat = places[k].lat;
-      if (plng && plat && plng > 100 && plng < 130 && plat > 20 && plat < 45) {
-        center = [plng, plat];
-        break;
-      }
-    }
-
-    var map = new window.AMap.Map(containerRef.current, {
-      zoom: 13,
-      center: center,
-      viewMode: '2D',
-      resizeEnable: true,
-    });
-    mapRef.current = map;
-
-    // Check for real coordinates (explicit null check — 0.0 is falsy in JS)
     function isValidCoord(lng, lat) {
       return lng != null && lat != null && !isNaN(lng) && !isNaN(lat)
         && Math.abs(lng) > 0.5 && Math.abs(lat) > 0.5;
     }
-    var hasReal = places.some(function(p) { return isValidCoord(p.lng, p.lat); });
+
     var currentCity = window._currentCity || '北京';
     var isShanghai = currentCity === '上海';
+    var defaultCenter = isShanghai ? [121.4737, 31.2304] : [116.3972, 39.9163];
     var centers = isShanghai
       ? [{ lng: 121.4737, lat: 31.2304 }, { lng: 121.4837, lat: 31.2404 }, { lng: 121.4637, lat: 31.2204 },
          { lng: 121.4937, lat: 31.2504 }, { lng: 121.4537, lat: 31.2104 }]
       : [{ lng: 116.3972, lat: 39.9163 }, { lng: 116.4072, lat: 39.9203 }, { lng: 116.3872, lat: 39.9123 },
          { lng: 116.4172, lat: 39.9263 }, { lng: 116.3772, lat: 39.9063 }];
 
-    const markers = places.map(function(p, i) {
-      var lng, lat;
-      if (isValidCoord(p.lng, p.lat)) {
-        lng = p.lng;
-        lat = p.lat;
-      } else {
-        var c = centers[i % centers.length];
-        lng = c.lng;
-        lat = c.lat;
-      }
+    // Find center
+    var center = defaultCenter;
+    for (var k = 0; k < places.length; k++) {
+      if (isValidCoord(places[k].lng, places[k].lat)) { center = [places[k].lng, places[k].lat]; break; }
+    }
 
+    self.map = new window.AMap.Map(container, {
+      zoom: 13, center: center, viewMode: '2D', resizeEnable: true,
+    });
+
+    var hasReal = places.some(function(p) { return isValidCoord(p.lng, p.lat); });
+
+    // Create markers with category-colored labels
+    self.markers = places.map(function(p, i) {
+      var lng, lat;
+      if (isValidCoord(p.lng, p.lat)) { lng = p.lng; lat = p.lat; }
+      else { var c = centers[i % centers.length]; lng = c.lng; lat = c.lat; }
+      var color = getCategoryColor(p.category);
       var marker = new window.AMap.Marker({
-        position: [lng, lat],
-        title: p.name || p.short,
+        position: [lng, lat], title: p.name || p.short,
         label: {
-          content: '<span style="background:#fff;color:#FF6633;border:2px solid #FF6633;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">' + (i + 1) + '</span>',
+          content: '<span style="background:#fff;color:' + color + ';border:2.5px solid ' + color + ';border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">' + (i + 1) + '</span>',
           offset: new window.AMap.Pixel(0, -30),
         },
         zIndex: 100,
       });
-
       marker.on('click', (function(idx) { return function() { onMarker && onMarker(idx); }; })(i));
       marker._idx = i;
-      map.add(marker);
+      self.map.add(marker);
       return marker;
     });
-    markersRef.current = markers;
 
-    // Draw route polyline
+    // Draw route: always start with reliable straight polyline, then optionally overlay Driving routes
     if (places.length >= 2) {
+      // Always draw straight polyline first (reliable fallback)
       var path = [];
-      for (var j = 0; j < markers.length; j++) {
-        var pos = markers[j].getPosition();
-        path.push([pos.lng, pos.lat]);
+      for (var j = 0; j < self.markers.length; j++) {
+        var pos = self.markers[j].getPosition();
+        if (pos) path.push([pos.lng, pos.lat]);
       }
-      var polyline = new window.AMap.Polyline({
-        path: path,
-        strokeColor: '#FF6633',
-        strokeWeight: 5,
-        strokeOpacity: 0.85,
-        lineJoin: 'round',
-        showDir: true,
-      });
-      map.add(polyline);
-      map.setFitView(null, false, [60, 60, 60, 60]);
+      if (path.length >= 2) {
+        var baseLine = new window.AMap.Polyline({
+          path: path, strokeColor: '#FF6633', strokeWeight: 5,
+          strokeOpacity: 0.85, lineJoin: 'round', showDir: true,
+        });
+        self.map.add(baseLine);
+        self.polylines.push(baseLine);
+        self.map.setFitView(null, false, [60, 60, 60, 60]);
+      }
+
+      // Optionally overlay with real driving routes if AMap.Driving plugin is loaded
+      if (hasReal && window.AMap.Driving) {
+        try {
+          var driving = new window.AMap.Driving({
+            policy: window.AMap.DrivingPolicy && window.AMap.DrivingPolicy.LEAST_TIME || 0,
+            map: self.map,
+          });
+          var pairIdx = 0;
+          function searchNextPair() {
+            if (pairIdx >= self.markers.length - 1) return;
+            var from = self.markers[pairIdx].getPosition();
+            var to = self.markers[pairIdx + 1].getPosition();
+            pairIdx++;
+            driving.search(from, to, function() { searchNextPair(); });
+          }
+          searchNextPair();
+        } catch(e) { /* Driving unavailable, straight line already drawn */ }
+      }
     } else if (places.length === 1) {
-      var mp = markers[0].getPosition();
-      map.setCenter([mp.lng, mp.lat]);
-      map.setZoom(15);
+      self.map.setCenter([self.markers[0].getPosition().lng, self.markers[0].getPosition().lat]);
+      self.map.setZoom(15);
     }
 
-    return function() {
-      map.destroy();
-      mapRef.current = null;
+    // Highlight a marker by index
+    self.highlightNode = function(idx) {
+      for (var i = 0; i < self.markers.length; i++) {
+        var m = self.markers[i];
+        var isActive = i === idx;
+        var color = getCategoryColor(places[i] && places[i].category);
+        try {
+          m.setLabel({
+            content: '<span style="background:' + (isActive ? color : '#fff') + ';color:' + (isActive ? '#fff' : color) + ';border:2.5px solid ' + color + ';border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">' + (i + 1) + '</span>',
+            offset: new window.AMap.Pixel(0, -30),
+          });
+          m.setzIndex(isActive ? 120 : 100);
+        } catch(e) {}
+      }
     };
+
+    self.destroy = function() {
+      for (var r = 0; r < self.polylines.length; r++) { try { self.polylines[r].setMap(null); } catch(e) {} }
+      self.polylines = [];
+      self.map.destroy();
+      self.map = null; self.markers = [];
+    };
+
+    return self;
+  }
+};
+
+// ─── Gaode Map (uses MapManager) ──────────────────────────────
+function GaodeMap({ places, activeIdx, onMarker, expanded = false }) {
+  const containerRef = useRefRD(null);
+  const managerRef = useRefRD(null);
+  const H = expanded ? 360 : 220;
+  const amapReady = typeof window.AMap !== 'undefined';
+
+  if (!amapReady) {
+    return <MockMapFallback places={places} activeIdx={activeIdx} onMarker={onMarker} expanded={expanded} />;
+  }
+
+  useEffectRD(() => {
+    if (!containerRef.current || !window.AMap) return;
+    try {
+      // Destroy previous
+      if (managerRef.current) { managerRef.current.destroy(); managerRef.current = null; }
+
+      var mgr = MapManager.create(containerRef.current, places, onMarker);
+      managerRef.current = mgr;
+
+      return function() { mgr.destroy(); managerRef.current = null; };
     } catch(e) {
-      console.warn('[GaodeMap] init failed, using fallback:', e.message);
-      return function() {}; // no cleanup needed
+      console.warn('[GaodeMap] init failed:', e.message);
     }
   }, [places]);
 
-  // Update marker styles when activeIdx changes (no map destroy)
+  // Update marker highlights when activeIdx changes
   useEffectRD(function() {
-    if (!markersRef.current) return;
-    for (var i = 0; i < markersRef.current.length; i++) {
-      var m = markersRef.current[i];
-      var isActive = i === activeIdx;
-      try {
-        m.setLabel({
-          content: '<span style="background:' + (isActive ? '#FF6633' : '#fff') + ';color:' + (isActive ? '#fff' : '#FF6633') + ';border:2px solid #FF6633;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">' + (i + 1) + '</span>',
-          offset: new window.AMap.Pixel(0, -30),
-        });
-        m.setzIndex(isActive ? 120 : 100);
-      } catch(e) {}
-    }
+    if (managerRef.current) managerRef.current.highlightNode(activeIdx);
   }, [activeIdx]);
 
   return (
@@ -1169,18 +1209,24 @@ function Timeline({ activeIdx, setActiveIdx, onToast, onImageOpen, onOpenDetail,
                   borderLeft: '2px dashed #E0D9CB'
                 }} />
                 }
+                {(() => {
+                  var nodeColor = getCategoryColor(place.category);
+                  var isActive = i === activeIdx;
+                  return (
                 <div style={{
                   position: 'absolute', left: RAIL_X, top: 8,
                   transform: 'translateX(-50%)',
                   width: NODE, height: NODE, borderRadius: 999,
-                  background: i === activeIdx ? '#FF6633' : '#fff',
-                  border: i === activeIdx ? '2px solid #FF6633' : '2px solid #FF6633',
-                  color: i === activeIdx ? '#fff' : '#FF6633',
+                  background: isActive ? nodeColor : '#fff',
+                  border: '2px solid ' + nodeColor,
+                  color: isActive ? '#fff' : nodeColor,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 700, fontSize: 12.5,
-                  boxShadow: i === activeIdx ? '0 3px 10px rgba(242, 98, 24, 0.35)' : '0 1px 3px rgba(0,0,0,0.08)',
+                  boxShadow: isActive ? '0 3px 10px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.08)',
                   zIndex: 2
                 }} className="num">{i + 1}</div>
+                  );
+                })()}
               </div>
               {/* place block */}
               <div ref={(el) => registerCardRef && registerCardRef(i, el)} style={{ flex: 1, minWidth: 0, marginBottom: 6 }}>

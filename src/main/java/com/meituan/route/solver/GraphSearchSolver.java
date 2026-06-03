@@ -1,5 +1,6 @@
 package com.meituan.route.solver;
 
+import com.meituan.route.data.GaodeGeoService;
 import com.meituan.route.model.Constraint;
 import com.meituan.route.model.POI;
 import com.meituan.route.model.Route;
@@ -21,20 +22,33 @@ import java.util.stream.Collectors;
 /**
  * Graph-based route solver using VRPTW-inspired approach.
  * Builds a weighted POI graph and searches for Pareto-optimal paths.
+ *
+ * Key improvements for accuracy:
+ * - Geographic clustering: rejects POIs too far apart to be in the same route
+ * - Distance feasibility: verifies real travel times don't exceed time budget
+ * - Budget enforcement: cost over-budget routes are penalized heavily
  */
 @Component
 public class GraphSearchSolver {
 
     private static final Logger log = LoggerFactory.getLogger(GraphSearchSolver.class);
     private static final double AVG_WALK_SPEED_KMH = 5.0;
-    private static final double AVG_DRIVE_SPEED_KMH = 25.0;
+    private static final double AVG_DRIVE_SPEED_KMH = 40.0; // More realistic urban driving speed
+    private static final double URBAN_DRIVE_SPEED_KMH = 30.0; // Urban average with traffic
+
+    // Max single-segment distance in km before POI is considered infeasible
+    private static final double MAX_SINGLE_HOP_KM = 50.0;
 
     // Cache travel time estimates
     private final PreferenceScorer preferenceScorer;
+    private final GaodeGeoService geoService;
     private final Map<String, Double> travelTimeCache = new ConcurrentHashMap<>();
+    // Real distance cache: "lng1,lat1-lng2,lat2" -> [distanceKm, durationMin]
+    private final Map<String, double[]> realDistanceCache = new ConcurrentHashMap<>();
 
-    public GraphSearchSolver(PreferenceScorer preferenceScorer) {
+    public GraphSearchSolver(PreferenceScorer preferenceScorer, GaodeGeoService geoService) {
         this.preferenceScorer = preferenceScorer;
+        this.geoService = geoService;
     }
 
     /**
@@ -59,6 +73,14 @@ public class GraphSearchSolver {
             return handleInsufficientPOIs(candidates, intent);
         }
 
+        // Pre-filter: remove geographically infeasible candidates
+        var feasibleCandidates = filterByGeographicFeasibility(candidates, intent);
+        if (feasibleCandidates.size() < 2) {
+            log.warn("After geographic filtering, only {} candidates remain — using originals", feasibleCandidates.size());
+            feasibleCandidates = candidates;
+        }
+        log.info("Geographic pre-filter: {} → {} feasible candidates", candidates.size(), feasibleCandidates.size());
+
         var goals = (preference != null && preference.preferenceTags() != null && !preference.preferenceTags().isEmpty())
                 ? List.of("BEST_EXPERIENCE", "FASTEST", "PREFERENCE")
                 : List.of("BEST_EXPERIENCE", "FASTEST", "CHEAPEST");
@@ -69,7 +91,7 @@ public class GraphSearchSolver {
             if (routes.size() >= numPlans) break;
 
             // Build a goal-specific candidate pool — sort by the goal's score
-            var goalCandidates = selectCandidatesForGoal(candidates, goal, preference);
+            var goalCandidates = selectCandidatesForGoal(feasibleCandidates, goal, preference);
 
             // Remove POIs already heavily used in previous routes to force diversity
             if (!usedIds.isEmpty()) {
@@ -83,8 +105,14 @@ public class GraphSearchSolver {
             var graph = buildGraph(goalCandidates, intent);
             var route = searchBestRoute(graph, goalCandidates, constraints, intent, goal);
             if (route != null && route.segments().size() >= 2) {
-                routes.add(route);
-                route.segments().forEach(s -> usedIds.add(s.poi().id()));
+                // Verify route feasibility — total time must not exceed time window
+                if (isRouteTimeFeasible(route, intent)) {
+                    routes.add(route);
+                    route.segments().forEach(s -> usedIds.add(s.poi().id()));
+                } else {
+                    log.info("Route for goal {} rejected: time infeasible ({}min vs {} end time)",
+                            goal, Math.round(route.totalTravelTime()), intent.endTime());
+                }
             }
         }
 
@@ -118,6 +146,96 @@ public class GraphSearchSolver {
         }
 
         return routes;
+    }
+
+    /**
+     * Filter candidates to keep only those geographically close enough to form a feasible route.
+     * Uses clustering: finds the largest cluster of mutually reachable POIs.
+     * Hard cap: no two POIs more than 20km apart can be in the same route.
+     */
+    private List<POI> filterByGeographicFeasibility(List<POI> candidates, UserIntent intent) {
+        if (candidates.size() <= 3) return candidates;
+
+        // Calculate max allowed distance between any two POIs in the same route
+        double maxDistanceKm = 20.0; // hard cap for urban routes
+
+        if (intent.startTime() != null && intent.endTime() != null) {
+            long availableMinutes = Duration.between(intent.startTime(), intent.endTime()).toMinutes();
+            if (availableMinutes > 0 && availableMinutes < 480) { // only tighten for short windows
+                // 3 POIs: 3 * 60min visit + travel. Each hop gets (available - 180) / 3 min
+                double maxTravelPerSegment = (availableMinutes - 180.0) / 3.0;
+                double distFromTime = maxTravelPerSegment * 0.5; // 0.5 km/min urban
+                maxDistanceKm = Math.min(maxDistanceKm, Math.max(distFromTime, 5.0));
+            }
+        }
+
+        maxDistanceKm = Math.min(maxDistanceKm, 20.0);
+        maxDistanceKm = Math.max(maxDistanceKm, 5.0);
+
+        log.info("Feasibility filter: maxDist={}km (available={}min)",
+                Math.round(maxDistanceKm * 10) / 10.0,
+                intent.startTime() != null && intent.endTime() != null
+                        ? Duration.between(intent.startTime(), intent.endTime()).toMinutes() : -1);
+
+        double finalMaxDist = maxDistanceKm;
+
+        // Greedy cluster: start from best-rated, grow by adding nearby POIs
+        var sorted = new ArrayList<>(candidates);
+        sorted.sort((a, b) -> Double.compare(b.rating(), a.rating()));
+
+        var feasible = new ArrayList<POI>();
+        for (var seed : sorted) {
+            var cluster = new ArrayList<POI>();
+            cluster.add(seed);
+            for (var other : sorted) {
+                if (other.equals(seed)) continue;
+                boolean reachable = true;
+                for (var member : cluster) {
+                    if (haversine(member.lat(), member.lng(), other.lat(), other.lng()) > finalMaxDist) {
+                        reachable = false;
+                        break;
+                    }
+                }
+                if (reachable) cluster.add(other);
+            }
+            if (cluster.size() > feasible.size()) {
+                feasible = cluster;
+            }
+        }
+
+        // Always apply hard 20km filter — even when falling back
+        if (feasible.size() < 2) {
+            log.info("Feasibility filter: no cluster found, applying hard 20km neighbor filter");
+            feasible = candidates.stream()
+                    .filter(p -> hasNearbyNeighbor(p, candidates, 20.0))
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (feasible.size() < 2) {
+            log.warn("Feasibility filter: even hard filter leaves <2 POIs, using all {} candidates", candidates.size());
+            return candidates;
+        }
+
+        log.info("Feasibility filter: {} → {} candidates (maxDist={}km)", candidates.size(), feasible.size(), Math.round(finalMaxDist));
+        return feasible;
+    }
+
+    /** Check if a POI has at least one nearby neighbor within maxDistanceKm. */
+    private boolean hasNearbyNeighbor(POI poi, List<POI> all, double maxDistKm) {
+        for (var other : all) {
+            if (other.equals(poi)) continue;
+            if (haversine(poi.lat(), poi.lng(), other.lat(), other.lng()) <= maxDistKm) return true;
+        }
+        return false;
+    }
+
+    /** Verify that total route time does not exceed the intent's time window. */
+    private boolean isRouteTimeFeasible(Route route, UserIntent intent) {
+        if (intent.endTime() == null || intent.startTime() == null) return true;
+        var lastSegment = route.segments().get(route.segments().size() - 1);
+        var totalEnd = lastSegment.departureTime();
+        // Allow 15-minute buffer
+        return !totalEnd.isAfter(intent.endTime().plusMinutes(15));
     }
 
     /**
@@ -249,10 +367,18 @@ public class GraphSearchSolver {
         // Beam: list of partial routes, each as (visited List, last POI, arrivalTime, cost, score, travelTime)
         var beam = new ArrayList<BeamEntry>();
         for (var poi : candidates) {
-            if (intent.startTime() != null && !isWithinOpenHours(poi, intent.startTime(), poi.visitDuration())) {
-                log.info("[BeamInit] Skipping {} (open {}-{}, start {}, stay {}min)",
-                        poi.name(), poi.openTime(), poi.closeTime(), intent.startTime(), poi.visitDuration());
-                continue;
+            if (intent.startTime() != null) {
+                if (!isWithinOpenHours(poi, intent.startTime(), poi.visitDuration())) {
+                    log.info("[BeamInit] Skipping {} (open {}-{}, start {}, closed)",
+                            poi.name(), poi.openTime(), poi.closeTime(), intent.startTime());
+                    continue;
+                }
+                // Also skip if start time is after close time (can't enter a closed POI)
+                var poiClose = poi.closeTime();
+                if (poiClose.isAfter(poi.openTime()) && intent.startTime().isAfter(poiClose)) {
+                    log.info("[BeamInit] Skipping {} — already closed at {}", poi.name(), intent.startTime());
+                    continue;
+                }
             }
             double poiScore = computePOIScore(poi, goal);
             beam.add(new BeamEntry(
@@ -280,6 +406,10 @@ public class GraphSearchSolver {
                         .toList();
 
                 for (var nextPOI : neighbors) {
+                    // Hard constraint: max 20km per single hop
+                    double hopDist = haversine(entry.last.lat(), entry.last.lng(), nextPOI.lat(), nextPOI.lng());
+                    if (hopDist > 20.0) continue;
+
                     double travelTime = getTravelTime(entry.last, nextPOI, intent.travelMode());
                     var arrivalTime = entry.departureTime.plusMinutes((long) travelTime);
                     var departureTime = arrivalTime.plusMinutes(nextPOI.visitDuration() + (long) nextPOI.queueTime());
@@ -287,6 +417,13 @@ public class GraphSearchSolver {
                     // Hard constraint: time window check
                     if (intent.endTime() != null && departureTime.isAfter(intent.endTime())) continue;
                     if (!isWithinOpenHours(nextPOI, arrivalTime, nextPOI.visitDuration())) continue;
+
+                    // Hard constraint: don't schedule visits after POI closes (prevents next-day scheduling)
+                    var poiOpen = nextPOI.openTime();
+                    var poiClose = nextPOI.closeTime();
+                    if (poiClose.isAfter(poiOpen) && arrivalTime.isAfter(poiClose)) continue;
+                    // Hard constraint: don't cross midnight
+                    if (arrivalTime.isBefore(entry.departureTime) && entry.departureTime.getHour() >= 18) continue;
 
                     double poiScore = computePOIScore(nextPOI, goal);
                     double newScore = entry.score + poiScore;
@@ -368,9 +505,15 @@ public class GraphSearchSolver {
             if (prev != null) {
                 currentTime = currentTime.plusMinutes((long) travelTime);
             }
-            // Ensure we don't arrive before opening (wait if needed)
-            if (currentTime.isBefore(poi.openTime())) {
-                currentTime = poi.openTime();
+            // Ensure we don't arrive before opening, but NOT after closing (no next-day scheduling)
+            var poiOpen = poi.openTime();
+            var poiClose = poi.closeTime();
+            if (currentTime.isBefore(poiOpen) && currentTime.isBefore(poiClose)) {
+                currentTime = poiOpen;
+            }
+            // Skip if we'd start after closing time (prevents next-day wrap)
+            if (poiClose.isAfter(poiOpen) && currentTime.isAfter(poiClose)) {
+                continue;
             }
             var departure = currentTime.plusMinutes(poi.visitDuration() + (long) poi.queueTime());
 
@@ -415,14 +558,22 @@ public class GraphSearchSolver {
 
     /**
      * Estimate travel time between two POIs using Haversine distance.
+     * Uses more realistic urban speeds with a traffic penalty factor.
      */
     public double estimateTravelTime(POI from, POI to, String travelMode) {
         String cacheKey = from.id() + "-" + to.id() + "-" + travelMode;
         return travelTimeCache.computeIfAbsent(cacheKey, k -> {
             double distance = haversine(from.lat(), from.lng(), to.lat(), to.lng());
-            double speed = "DRIVING".equalsIgnoreCase(travelMode) ? AVG_DRIVE_SPEED_KMH : AVG_WALK_SPEED_KMH;
+            // For driving in urban areas, add ~30% traffic penalty
+            double speed = "DRIVING".equalsIgnoreCase(travelMode)
+                    ? URBAN_DRIVE_SPEED_KMH  // ~30 km/h with traffic
+                    : AVG_WALK_SPEED_KMH;
             double timeHours = distance / speed;
             double timeMinutes = timeHours * 60;
+            // Add 5-min buffer for traffic lights, parking, etc. when driving
+            if ("DRIVING".equalsIgnoreCase(travelMode) && distance > 1.0) {
+                timeMinutes += 5;
+            }
             // Minimum travel time of 2 minutes
             return Math.max(2, timeMinutes);
         });

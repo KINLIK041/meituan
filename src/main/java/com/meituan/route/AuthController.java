@@ -18,10 +18,10 @@ public class AuthController {
         this.authService = authService;
     }
 
-    /** POST /api/auth/register — Create account with name, password, city, model provider, optional API key. */
+    /** POST /api/auth/register — Create account with name, password, city, optional personaId for seed profile cloning. */
     @PostMapping(value = "/register", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Map<String, Object>> register(@RequestBody RegisterRequest req) {
-        var result = authService.register(req.name(), req.password(), req.city(), req.provider(), req.apiKey());
+        var result = authService.register(req.name(), req.password(), req.city(), req.personaId());
         if (!result.success()) {
             return Mono.just(Map.of("success", false, "error", result.error()));
         }
@@ -75,7 +75,7 @@ public class AuthController {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record RegisterRequest(String name, String password, String city, String provider, String apiKey) {}
+    public record RegisterRequest(String name, String password, String city, String personaId) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record LoginRequest(String name, String password) {}

@@ -46,6 +46,7 @@ public class ConstraintEngine {
 
     /**
      * Build constraints from user intent.
+     * Budget is now a HARD constraint — routes exceeding budget are rejected.
      */
     public List<Constraint> buildConstraints(UserIntent intent, List<POI> candidates) {
         var constraints = new ArrayList<Constraint>();
@@ -66,9 +67,9 @@ public class ConstraintEngine {
             }
         }
 
-        // Budget constraint (soft, can relax)
+        // Budget constraint — HARD (must not exceed, with limited relaxation available)
         if (intent.budget() > 0) {
-            constraints.add(Constraint.budget(intent.budget(), 6));
+            constraints.add(Constraint.budgetHard(intent.budget()));
         }
 
         // Rating (soft)
@@ -92,6 +93,7 @@ public class ConstraintEngine {
     /**
      * Attempt constraint relaxation when no solution exists.
      * Returns relaxed constraints ordered by relaxation level.
+     * For hard budget: first try 20% increase, then 50%, then remove budget entirely.
      */
     public List<List<Constraint>> relaxConstraints(List<Constraint> constraints) {
         var hard = constraints.stream().filter(c -> c.type() == Constraint.ConstraintType.HARD).toList();
@@ -102,34 +104,48 @@ public class ConstraintEngine {
 
         List<List<Constraint>> relaxations = new ArrayList<>();
 
-        // Level 0: remove lowest priority soft constraint
-        if (!soft.isEmpty()) {
-            var relaxed = new ArrayList<>(hard);
-            for (int i = 1; i < soft.size(); i++) {
-                relaxed.add(soft.get(i));
+        // Level 0: relax hard budget by 20%
+        var relaxed20 = new ArrayList<Constraint>();
+        for (var c : constraints) {
+            if ("budget".equals(c.id()) && c.type() == Constraint.ConstraintType.HARD) {
+                double newBudget = c.getValueAs(Double.class).orElse(0.0) * 1.2;
+                relaxed20.add(Constraint.budget(newBudget, c.priority())); // downgrade to soft
+            } else {
+                relaxed20.add(c);
             }
-            relaxations.add(relaxed);
+        }
+        relaxations.add(relaxed20);
+
+        // Level 1: relax hard budget by 50% + remove lowest priority soft constraint
+        if (!soft.isEmpty() || true) {
+            var relaxed50 = new ArrayList<Constraint>();
+            for (var c : constraints) {
+                if ("budget".equals(c.id()) && c.type() == Constraint.ConstraintType.HARD) {
+                    double newBudget = c.getValueAs(Double.class).orElse(0.0) * 1.5;
+                    relaxed50.add(Constraint.budget(newBudget, c.priority()));
+                } else {
+                    relaxed50.add(c);
+                }
+            }
+            // Also remove lowest soft constraint
+            if (!soft.isEmpty()) {
+                relaxed50.removeIf(sc -> sc.type() == Constraint.ConstraintType.SOFT
+                        && sc.id().equals(soft.get(0).id()));
+            }
+            relaxations.add(relaxed50);
         }
 
-        // Level 1: remove two lowest priority soft constraints
-        if (soft.size() >= 3) {
-            var relaxed = new ArrayList<>(hard);
-            for (int i = 2; i < soft.size(); i++) {
-                relaxed.add(soft.get(i));
+        // Level 2: remove budget hard constraint entirely
+        var noBudget = new ArrayList<>(constraints);
+        noBudget.removeIf(c -> "budget".equals(c.id()) && c.type() == Constraint.ConstraintType.HARD);
+        // Also remove two lowest soft constraints
+        if (soft.size() >= 2) {
+            for (int i = 0; i < Math.min(2, soft.size()); i++) {
+                var toRemove = soft.get(i);
+                noBudget.removeIf(c -> c.id().equals(toRemove.id()) && c.type() == Constraint.ConstraintType.SOFT);
             }
-            relaxations.add(relaxed);
         }
-
-        // Level 2: also relax budget by 50%
-        var relaxed = new ArrayList<>(constraints);
-        relaxed = relaxed.stream().map(c -> {
-            if ("budget".equals(c.id())) {
-                double newBudget = c.getValueAs(Double.class).orElse(0.0) * 1.5;
-                return Constraint.budget(newBudget, c.priority());
-            }
-            return c;
-        }).collect(Collectors.toCollection(ArrayList::new));
-        relaxations.add(relaxed);
+        relaxations.add(noBudget);
 
         return relaxations;
     }
@@ -158,6 +174,7 @@ public class ConstraintEngine {
         return switch (c.id()) {
             case "time_window" -> checkTimeWindow(c, route);
             case "category" -> checkCategory(c, route);
+            case "budget" -> route.totalCost() <= c.getValueAs(Double.class).orElse(Double.MAX_VALUE);
             default -> true;
         };
     }

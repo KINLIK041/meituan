@@ -50,8 +50,11 @@ public class AuthService {
         }
     }
 
-    /** Register a new user with password, optional API key + model provider. */
-    public RegisterResult register(String name, String password, String city, String providerName, String apiKey) {
+    /**
+     * Register a new user. When personaId matches a seed profile (user_001/002/003),
+     * clone that persona's preferences for personalized recommendations.
+     */
+    public RegisterResult register(String name, String password, String city, String personaId) {
         String userId = "user_" + UUID.randomUUID().toString().substring(0, 8);
 
         var existing = userRepo.findAllByOrderByName().stream()
@@ -60,26 +63,45 @@ public class AuthService {
             return new RegisterResult(null, null, null, "昵称已被使用");
         }
 
+        // Look up persona seed data if provided
+        var personaProfile = (personaId != null && !personaId.isBlank())
+                ? userRepo.findByUserId(personaId).orElse(null)
+                : null;
+
         var entity = new UserProfileEntity();
         entity.setUserId(userId);
         entity.setName(name);
-        entity.setProfileName(city.equals("上海") ? "上海探索者" : "北京探索者");
-        entity.setPreferredCity(city);
-        entity.setAvgBudget(150.0);
-        entity.setPasswordHash(hashPassword(password));
-        if (providerName != null && !providerName.isBlank()) {
-            entity.setProviderName(providerName.trim());
-        }
-        if (apiKey != null && !apiKey.isBlank()) {
-            entity.setDeepseekApiKey(apiKey.trim());
-        }
-        try {
-            entity.setFavoriteCategoriesJson("[]");
-            entity.setPreferenceTagsJson("{\"高评分\":0.5,\"性价比\":0.5}");
-            entity.setAvoidTagsJson("{}");
-            entity.setHistoryActionsJson("[]");
-        } catch (Exception ignored) {}
 
+        if (personaProfile != null) {
+            // Clone persona preferences
+            entity.setProfileName(personaProfile.getProfileName() != null
+                    ? personaProfile.getProfileName()
+                    : (city.equals("上海") ? "上海探索者" : "北京探索者"));
+            entity.setPreferredCity(personaProfile.getPreferredCity() != null
+                    ? personaProfile.getPreferredCity() : city);
+            entity.setAvgBudget(personaProfile.getAvgBudget() > 0
+                    ? personaProfile.getAvgBudget() : 150.0);
+            entity.setFavoriteCategoriesJson(personaProfile.getFavoriteCategoriesJson());
+            entity.setPreferenceTagsJson(personaProfile.getPreferenceTagsJson());
+            entity.setAvoidTagsJson(personaProfile.getAvoidTagsJson());
+            entity.setHistoryActionsJson("[]");
+            entity.setProviderName(personaProfile.getProviderName());
+            entity.setDeepseekApiKey(personaProfile.getDeepseekApiKey());
+        } else {
+            entity.setProfileName(city.equals("上海") ? "上海探索者" : "北京探索者");
+            entity.setPreferredCity(city);
+            entity.setAvgBudget(150.0);
+            entity.setProviderName(null);
+            entity.setDeepseekApiKey(null);
+            try {
+                entity.setFavoriteCategoriesJson("[]");
+                entity.setPreferenceTagsJson("{\"高评分\":0.5,\"性价比\":0.5}");
+                entity.setAvoidTagsJson("{}");
+                entity.setHistoryActionsJson("[]");
+            } catch (Exception ignored) {}
+        }
+
+        entity.setPasswordHash(hashPassword(password));
         userRepo.save(entity);
 
         String token = generateToken(userId, name);

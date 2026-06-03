@@ -507,12 +507,14 @@ async function planWithFallback(query, scene, answers, city, intent) {
     }
   } catch (e2) { console.warn('/smart-plan also failed:', e2.message); }
 
-  // Backend unavailable — no frontend mock fallback
+  // Backend unavailable — return prebuilt demo data
+  console.warn('Backend unavailable, using demo data fallback');
+  var demoRoutes = getDemoRoutes(city || '北京');
   return {
-    sessionId: 'err-' + Date.now(),
-    routes: [],
-    warning: '后端服务暂时不可用，请检查网络后重试',
-    recommendedRoute: null,
+    sessionId: 'demo-' + Date.now(),
+    routes: demoRoutes,
+    warning: '正在使用离线演示数据（后端未连接）',
+    recommendedRoute: demoRoutes[0] || null,
   };
 }
 
@@ -526,12 +528,14 @@ async function adjustWithFallback(sessionId, adjustment, currentRoutes, city, sc
     if (result.routes.length > 0) return result;
   } catch (e) { console.warn('Backend API unavailable for adjust:', e.message); }
 
-  // Backend unavailable — no frontend mock fallback
+  // Backend unavailable — return demo data
+  console.warn('Backend unavailable for adjust, using demo fallback');
+  var demoRoutes = getDemoRoutes(city || '北京');
   return {
-    sessionId: sessionId || ('err-' + Date.now()),
-    routes: [],
-    warning: '调整失败，后端服务不可用，请稍后重试',
-    recommendedRoute: null,
+    sessionId: sessionId || ('demo-adj-' + Date.now()),
+    routes: demoRoutes,
+    warning: '正在使用离线演示数据（后端未连接）',
+    recommendedRoute: demoRoutes[0] || null,
   };
 }
 
@@ -676,6 +680,95 @@ async function deleteFavorite(id) {
   }
 }
 
+// ─── Demo data fallback (when backend is unavailable) ──────────────
+function getDemoRoutes(city) {
+  var isBeijing = city === '北京';
+  if (isBeijing) {
+    return [
+      {
+        id: 'demo-bj-1', positioning: '综合最优', tone: 'orange',
+        route_name: '北京经典半日游',
+        total_time: '3 小时 30 分钟', total_avg: 120, total_distance: '6.5km',
+        transport: '地铁 + 步行', optimizationGoal: 'BEST_EXPERIENCE',
+        pois: [
+          { short: '颐和园', category: '景点', rating: 4.8, avgCost: 30, lng: 116.2755, lat: 40.0005,
+            tags: ['世界遗产', '皇家园林'], wait_time: '约15分钟', opening_hours: '06:30-20:00' },
+          { short: '圆明园', category: '景点', rating: 4.6, avgCost: 25, lng: 116.3043, lat: 40.0088,
+            tags: ['历史古迹', '公园'], wait_time: '约10分钟', opening_hours: '07:00-21:00' },
+          { short: '食宝街', category: '美食', rating: 4.5, avgCost: 65, lng: 116.3157, lat: 39.9934,
+            tags: ['美食街', '性价比高'], wait_time: '约20分钟', opening_hours: '10:00-22:00' },
+        ],
+        constraintMatch: { budget: '符合', queue: '符合', open_time: '符合', distance: '适中' },
+        _preferenceMatchTags: ['少走路', '近地铁'], _preferenceScore: 85,
+      },
+      {
+        id: 'demo-bj-2', positioning: '少走路', tone: 'pink',
+        route_name: '胡同文化漫步',
+        total_time: '2 小时 45 分钟', total_avg: 80, total_distance: '3.2km',
+        transport: '步行可达', optimizationGoal: 'FASTEST',
+        pois: [
+          { short: '南锣鼓巷', category: '购物', rating: 4.4, avgCost: 30, lng: 116.4092, lat: 39.9426,
+            tags: ['胡同', '文创'], wait_time: '无需排队', opening_hours: '全天' },
+          { short: '什刹海', category: '景点', rating: 4.5, avgCost: 0, lng: 116.3932, lat: 39.9408,
+            tags: ['湖泊', '散步'], wait_time: '无需排队', opening_hours: '全天' },
+          { short: '姚记炒肝店', category: '美食', rating: 4.3, avgCost: 50, lng: 116.4057, lat: 39.9397,
+            tags: ['老北京', '小吃'], wait_time: '约10分钟', opening_hours: '06:00-22:00' },
+        ],
+        constraintMatch: { budget: '符合', queue: '符合', open_time: '符合', distance: '适中' },
+      },
+      {
+        id: 'demo-bj-3', positioning: '偏好优先', tone: 'green',
+        route_name: '文艺出片半日游',
+        total_time: '4 小时', total_avg: 150, total_distance: '8.1km',
+        transport: '驾车 + 步行', optimizationGoal: 'PREFERENCE',
+        pois: [
+          { short: '798艺术区', category: '娱乐', rating: 4.6, avgCost: 50, lng: 116.5018, lat: 39.9851,
+            tags: ['出片', '展览', '文艺'], wait_time: '无需排队', opening_hours: '10:00-18:00' },
+          { short: '望京SOHO', category: '购物', rating: 4.3, avgCost: 100, lng: 116.4855, lat: 39.9981,
+            tags: ['拍照好看', '商圈'], wait_time: '无需排队', opening_hours: '10:00-22:00' },
+        ],
+        constraintMatch: { budget: '符合', queue: '符合', open_time: '符合', distance: '适中' },
+        _preferenceMatchTags: ['出片', '拍照好看'], _preferenceScore: 90,
+      },
+    ];
+  }
+  // Shanghai demo routes
+  return [
+    {
+      id: 'demo-sh-1', positioning: '综合最优', tone: 'orange',
+      route_name: '上海精致半日游',
+      total_time: '3 小时', total_avg: 180, total_distance: '5.8km',
+      transport: '地铁 + 步行', optimizationGoal: 'BEST_EXPERIENCE',
+      pois: [
+        { short: '武康路', category: '景点', rating: 4.7, avgCost: 0, lng: 121.4446, lat: 31.2077,
+          tags: ['出片', '历史建筑', '网红打卡'], wait_time: '无需排队', opening_hours: '全天' },
+        { short: '安福路', category: '购物', rating: 4.5, avgCost: 80, lng: 121.4445, lat: 31.2108,
+          tags: ['买手店', '咖啡'], wait_time: '约5分钟', opening_hours: '10:00-22:00' },
+        { short: 'RAC Coffee', category: '美食', rating: 4.4, avgCost: 100, lng: 121.4528, lat: 31.2135,
+          tags: ['网红餐厅', '拍照好看'], wait_time: '约15分钟', opening_hours: '08:00-22:00' },
+      ],
+      constraintMatch: { budget: '符合', queue: '符合', open_time: '符合', distance: '适中' },
+      _preferenceMatchTags: ['出片', '安静'], _preferenceScore: 88,
+    },
+    {
+      id: 'demo-sh-2', positioning: '偏好优先', tone: 'pink',
+      route_name: '探店打卡路线',
+      total_time: '4 小时 15 分钟', total_avg: 250, total_distance: '7.2km',
+      transport: '驾车', optimizationGoal: 'PREFERENCE',
+      pois: [
+        { short: '新天地', category: '购物', rating: 4.8, avgCost: 120, lng: 121.4802, lat: 31.2197,
+          tags: ['热门', '高端', '出片'], wait_time: '约10分钟', opening_hours: '10:00-22:00' },
+        { short: '外滩', category: '景点', rating: 4.9, avgCost: 0, lng: 121.4951, lat: 31.2405,
+          tags: ['夜景', '地标', '拍照好看'], wait_time: '无需排队', opening_hours: '全天' },
+        { short: '蟹家大院', category: '美食', rating: 4.6, avgCost: 130, lng: 121.4967, lat: 31.2367,
+          tags: ['网红餐厅', '高端'], wait_time: '约30分钟', opening_hours: '11:00-21:30' },
+      ],
+      constraintMatch: { budget: '略超预算', queue: '可能排队', open_time: '符合', distance: '适中' },
+      _preferenceMatchTags: ['新店', '热门', '高评分'], _preferenceScore: 92,
+    },
+  ];
+}
+
 // ─── Exports ──────────────────────────────────────────────────────
 Object.assign(window, {
   API_BASE,
@@ -690,4 +783,5 @@ Object.assign(window, {
   fmtDuration, fmtDistance,
   saveFavorite, getFavorites, deleteFavorite,
   fetchPOIsFromBackend,
+  getDemoRoutes,
 });
