@@ -249,6 +249,11 @@ public class RoutePlannerOrchestrator {
             }
             var additionalConstraints = constraintAgent.parseAdjustmentConstraints(adjustment);
             int keepCount = sessionManager.resolveAdjustment(adjustment, currentRoute);
+            // "少走路"/"更便宜" → don't keep any old POIs — full replan with new constraints
+            if (adjustment.contains("少走路") || adjustment.contains("少走")
+                    || adjustment.contains("更便宜") || adjustment.contains("便宜")) {
+                keepCount = 0;
+            }
             var keptPrefix = currentRoute.segments().stream().limit(keepCount).toList();
             return new AdjustmentContext(additionalConstraints, keptPrefix, session, currentRoute, false, false);
         }).subscribeOn(Schedulers.boundedElastic());
@@ -283,9 +288,20 @@ public class RoutePlannerOrchestrator {
                     ? mergeIntentContext(parsedIntent, convResult.previousIntent())
                     : parsedIntent;
             // "少走路" → force FASTEST goal + WALKING mode to minimize walking distance
-            final var newIntent = adjustment.contains("少走路") || adjustment.contains("少走")
+            final var intentAfterWalking = adjustment.contains("少走路") || adjustment.contains("少走")
                     ? mergedIntent.withGoal("FASTEST").withTravelMode("WALKING")
                     : mergedIntent;
+            // "更便宜"/"便宜一点" → force CHEAPEST goal + reduce budget by ~30%
+            final com.meituan.route.model.UserIntent newIntent;
+            if (adjustment.contains("更便宜") || adjustment.contains("便宜一点") || adjustment.contains("便宜")) {
+                var reducedBudget = intentAfterWalking.budget() > 0
+                        ? Math.max(30, intentAfterWalking.budget() * 0.7)
+                        : 100; // fallback budget when none was set
+                newIntent = intentAfterWalking.withGoal("CHEAPEST")
+                        .withBudget((int) reducedBudget);
+            } else {
+                newIntent = intentAfterWalking;
+            }
 
             return discoveryAgent.discover(newIntent).flatMap(discovery -> {
                 var planResult = planningAgent.replan(discovery, newIntent,

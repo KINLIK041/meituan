@@ -33,10 +33,159 @@ public class MockDataService implements DataService {
     private void initData() {
         var beijing = buildBeijingPOIs();
         var shanghai = buildShanghaiPOIs();
+        // Enrich with realistic queue times, UGC data, and additional categories
+        beijing = enrichPOIs(beijing, "北京");
+        shanghai = enrichPOIs(shanghai, "上海");
         poiByCity.put("北京", beijing);
         poiByCity.put("上海", shanghai);
         beijing.forEach(p -> poiById.put(p.id(), p));
         shanghai.forEach(p -> poiById.put(p.id(), p));
+    }
+
+    /** Enrich mock POIs with realistic queue times, UGC data, and extra category POIs. */
+    private List<POI> enrichPOIs(List<POI> pois, String city) {
+        var result = new ArrayList<POI>();
+        for (var p : pois) {
+            result.add(enrichSingle(p));
+        }
+        // Add SHOPPING / CULTURE category POIs for route diversity (TC02, TC08)
+        result.addAll(buildExtraCategoryPOIs(city));
+        return result;
+    }
+
+    /** Enrich a single POI with queueTime and UGC data based on its ID. */
+    private POI enrichSingle(POI p) {
+        // Beijing popular restaurants — add realistic queue times
+        if ("bj-053".equals(p.id())) return p.withQueueTime(25).withUGC(
+                List.of("烤鸭好吃", "排队久", "环境优雅", "适合聚会"),
+                "烤鸭确实一绝，但饭点排队至少半小时，建议错峰去",
+                List.of("排队久"));
+        if ("bj-056".equals(p.id())) return p.withQueueTime(20).withUGC(
+                List.of("服务好", "排队", "适合聚会", "热闹"),
+                "服务没得说，等位时有小吃和美甲，就是人太多经常要等位",
+                List.of("排队久"));
+        if ("bj-076".equals(p.id())) return p.withQueueTime(35).withUGC(
+                List.of("麻辣鲜香", "排队王", "夜宵圣地", "人气爆棚", "热闹"),
+                "簋街排队王名不虚传，晚上十点还在排，但麻小确实好吃",
+                List.of("排队久", "环境嘈杂"));
+        if ("bj-060".equals(p.id())) return p.withQueueTime(30).withUGC(
+                List.of("老北京涮肉", "排队久", "正宗", "人气高"),
+                "牛街老字号，手切羊肉一绝，但永远在排队，建议工作日来",
+                List.of("排队久"));
+        if ("bj-058".equals(p.id())) return p.withUGC(
+                List.of("环境安静", "适合约会", "四合院", "精致", "北京菜"),
+                "四合院里用餐氛围特别好，安静雅致，适合情侣约会和商务宴请",
+                List.of("价格偏高"));
+        if ("bj-079".equals(p.id())) return p.withQueueTime(10).withUGC(
+                List.of("网红汉堡", "拍照好看", "人气高"),
+                "三里屯网红打卡地，汉堡好吃但地方小，高峰期要等位",
+                List.of());
+        if ("bj-080".equals(p.id())) return p.withQueueTime(15).withUGC(
+                List.of("精酿啤酒", "氛围好", "适合朋友聚会", "热闹"),
+                "北京最好的精酿酒吧之一，露台位置很抢手，周末人多",
+                List.of("周末拥挤"));
+
+        // Shanghai popular restaurants — add more UGC and queue times
+        if ("sh-105".equals(p.id())) return p.withQueueTime(12).withUGC(
+                List.of("可颂好吃", "排队", "网红打卡", "咖啡不错"),
+                "上海最火的面包房，可颂确实名不虚传，但周末排队要等很久",
+                List.of("排队久"));
+        if ("sh-109".equals(p.id())) return p.withQueueTime(20).withUGC(
+                List.of("麻辣火锅", "聚会首选", "分量足", "排队", "热闹"),
+                "成都过来的老火锅品牌，牛油锅底香浓，饭点必排队",
+                List.of("排队久", "环境嘈杂"));
+        if ("sh-111".equals(p.id())) return p.withQueueTime(8).withUGC(
+                List.of("环境好", "适合约会", "咖喱蟹", "新天地"),
+                "新天地最老牌的泰餐厅，露台位置很适合约会，咖喱蟹必点",
+                List.of());
+        if ("sh-115".equals(p.id())) return p.withQueueTime(35).withUGC(
+                List.of("排队王", "美蛙鱼头", "麻辣", "夜宵", "人气爆棚"),
+                "上海火锅排队天花板，美蛙鱼头锅确实好吃，但等2小时是常态",
+                List.of("排队久", "等位时间长", "环境嘈杂"));
+        if ("sh-106".equals(p.id())) return p.withUGC(
+                List.of("顶级日料", "安静", "适合约会", "精致", "贵但值"),
+                "上海高端日料天花板，环境静谧，适合纪念日和重要约会",
+                List.of("价格昂贵", "需提前预约"));
+        return p;
+    }
+
+    /** Build additional SHOPPING / CULTURE POIs for route diversity. */
+    private List<POI> buildExtraCategoryPOIs(String city) {
+        if ("北京".equals(city)) return List.of(
+                new POI("bj-x01", "PageOne书店(三里屯店)", "SHOPPING", "书店",
+                        39.934, 116.458, "三里屯太古里南区", "朝阳区", "北京",
+                        4.7, 60, 0, LocalTime.of(10, 0), LocalTime.of(22, 0), 60,
+                        List.of("书店", "文艺", "安静", "拍照", "咖啡"),
+                        "images/stores/photo-401-1.jpg", "三里屯最美书店，24小时营业，可以安静看书喝咖啡", 92,
+                        List.of("环境安静", "适合独处", "文艺氛围"), "书店环境很好，很安静，适合一个人待着看书，也有咖啡区",
+                        List.of()),
+                new POI("bj-x02", "红砖美术馆", "CULTURE", "美术馆",
+                        40.015, 116.542, "崔各庄乡何各庄村", "朝阳区", "北京",
+                        4.6, 120, 0, LocalTime.of(10, 0), LocalTime.of(17, 30), 120,
+                        List.of("美术馆", "红砖建筑", "拍照出片", "文艺", "当代艺术"),
+                        "images/stores/photo-402-1.jpg", "红砖建筑本身就是艺术品，园林和展览都值得一看", 90,
+                        List.of("拍照好看", "建筑很美", "安静"), "红砖建筑和园林设计很有特色，适合拍照，平时人不多很安静",
+                        List.of()),
+                new POI("bj-x03", "798艺术区·UCCA", "CULTURE", "当代艺术",
+                        39.984, 116.495, "酒仙桥路4号798艺术区", "朝阳区", "北京",
+                        4.5, 100, 0, LocalTime.of(10, 0), LocalTime.of(18, 30), 150,
+                        List.of("当代艺术", "展览", "拍照", "文艺", "798"),
+                        "images/stores/photo-403-1.jpg", "中国最具影响力的当代艺术机构之一，展览质量很高", 88,
+                        List.of("展览不错", "空间大", "适合拍照"), "798里最好的美术馆之一，展览经常更换，每次来都有新发现",
+                        List.of()),
+                new POI("bj-x04", "言几又·今日阅读(国贸店)", "SHOPPING", "书店",
+                        39.905, 116.463, "建国门外大街1号国贸商城", "朝阳区", "北京",
+                        4.4, 50, 0, LocalTime.of(10, 0), LocalTime.of(22, 0), 45,
+                        List.of("书店", "咖啡", "文创", "安静", "国贸"),
+                        "images/stores/photo-404-1.jpg", "国贸里的文艺书店，有咖啡区和文创区，适合打发时间", 85,
+                        List.of("环境舒适", "安静", "适合独处"), "环境很舒服，可以在里面待一下午，咖啡也不错",
+                        List.of()),
+                new POI("bj-x05", "三里屯太古里买手店街", "SHOPPING", "买手店",
+                        39.935, 116.457, "三里屯太古里北区", "朝阳区", "北京",
+                        4.5, 200, 0, LocalTime.of(10, 0), LocalTime.of(22, 0), 90,
+                        List.of("买手店", "潮牌", "时尚", "逛街", "三里屯"),
+                        "images/stores/photo-405-1.jpg", "北京最集中的买手店街区，集合多家国内外设计师品牌", 88,
+                        List.of("潮牌多", "适合逛街", "时尚"), "北区的买手店很值得逛，很多小众设计师品牌，适合慢慢淘",
+                        List.of())
+        );
+        if ("上海".equals(city)) return List.of(
+                new POI("sh-x01", "衡山·和集", "SHOPPING", "书店",
+                        31.21, 121.445, "衡山路880号", "徐汇区", "上海",
+                        4.6, 50, 0, LocalTime.of(10, 0), LocalTime.of(22, 0), 60,
+                        List.of("书店", "咖啡", "文艺", "安静", "衡山路"),
+                        "images/stores/photo-406-1.jpg", "衡山路上的文艺书店，老洋房改造，可以安静阅读喝咖啡", 90,
+                        List.of("环境安静", "文艺", "适合独处"), "老洋房里的书店太有味道了，二楼窗边位置最适合看书发呆",
+                        List.of()),
+                new POI("sh-x02", "西岸美术馆", "CULTURE", "美术馆",
+                        31.166, 121.461, "龙腾大道2600号", "徐汇区", "上海",
+                        4.7, 100, 0, LocalTime.of(10, 0), LocalTime.of(17, 0), 150,
+                        List.of("美术馆", "蓬皮杜", "当代艺术", "拍照", "西岸"),
+                        "images/stores/photo-407-1.jpg", "与蓬皮杜中心合作的当代美术馆，建筑本身就是打卡地标", 92,
+                        List.of("展览很棒", "建筑漂亮", "江景"), "西岸滨江的美术馆群很有格调，蓬皮杜合作展质量很高",
+                        List.of()),
+                new POI("sh-x03", "香蕉鱼书店", "SHOPPING", "书店",
+                        31.214, 121.43, "愚园路1388号", "长宁区", "上海",
+                        4.5, 40, 0, LocalTime.of(11, 0), LocalTime.of(20, 0), 45,
+                        List.of("独立书店", "艺术书", "小众", "文艺", "愚园路"),
+                        "images/stores/photo-408-1.jpg", "专注于艺术家书和独立出版的小众书店，文艺青年聚集地", 86,
+                        List.of("小众文艺", "书很特别", "安静"), "很难找但是很值得，都是独立出版的艺术书籍，很特别",
+                        List.of()),
+                new POI("sh-x04", "安福路买手店街", "SHOPPING", "买手店",
+                        31.213, 121.442, "安福路298号", "徐汇区", "上海",
+                        4.6, 150, 0, LocalTime.of(10, 0), LocalTime.of(22, 0), 90,
+                        List.of("买手店", "小众品牌", "时尚", "逛街", "安福路"),
+                        "images/stores/photo-409-1.jpg", "安福路聚集多家买手店和生活方式店，潮人必逛", 90,
+                        List.of("好逛", "品牌独特", "拍照好看"), "安福路太好逛了，每次来都有新发现，适合周末慢慢溜达",
+                        List.of()),
+                new POI("sh-x05", "老场坊1933", "CULTURE", "文创园",
+                        31.266, 121.496, "溧阳路611号", "虹口区", "上海",
+                        4.4, 0, 0, LocalTime.of(9, 0), LocalTime.of(22, 0), 60,
+                        List.of("历史建筑", "拍照", "文创", "小众", "建筑"),
+                        "images/stores/photo-410-1.jpg", "1933年建造的屠宰场改造的文创空间，建筑极具特色", 84,
+                        List.of("建筑独特", "适合拍照", "免费"), "建筑太有特色了，拍照很出片，里面还有咖啡馆和小店",
+                        List.of())
+        );
+        return List.of();
     }
 
     @Override

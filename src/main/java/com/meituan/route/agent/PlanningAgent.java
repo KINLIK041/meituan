@@ -64,7 +64,9 @@ public class PlanningAgent {
         if (routes.isEmpty()) {
             // Try all relaxation levels in parallel — first success wins
             log.info("No initial solution, attempting constraint relaxation...");
-            var relaxations = constraintEngine.relaxConstraints(constraints);
+            // For CHEAPEST goal, preserve budget — don't remove it entirely (Level 2)
+            boolean preserveBudget = "CHEAPEST".equals(intent.optimizationGoal());
+            var relaxations = constraintEngine.relaxConstraints(constraints, preserveBudget);
             routes = relaxations.parallelStream()
                     .map(relaxed -> graphSolver.generatePlans(candidates, relaxed, intent, 2))
                     .filter(r -> !r.isEmpty())

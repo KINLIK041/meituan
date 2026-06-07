@@ -2,6 +2,7 @@ package com.meituan.route.service;
 
 import com.meituan.route.entity.UserProfileEntity;
 import com.meituan.route.repository.UserProfileRepository;
+import com.meituan.route.security.ApiKeyEncryptor;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -22,9 +23,11 @@ public class AuthService {
     private static final long TOKEN_EXPIRY_HOURS = 72;
     private final SecretKey signingKey;
     private final UserProfileRepository userRepo;
+    private final ApiKeyEncryptor encryptor;
 
-    public AuthService(UserProfileRepository userRepo) {
+    public AuthService(UserProfileRepository userRepo, ApiKeyEncryptor encryptor) {
         this.userRepo = userRepo;
+        this.encryptor = encryptor;
         // Read signing key from environment variable, fail fast if not set
         var secret = System.getenv("JWT_SECRET");
         if (secret == null || secret.isBlank()) {
@@ -86,7 +89,9 @@ public class AuthService {
             entity.setAvoidTagsJson(personaProfile.getAvoidTagsJson());
             entity.setHistoryActionsJson("[]");
             entity.setProviderName(personaProfile.getProviderName());
-            entity.setDeepseekApiKey(personaProfile.getDeepseekApiKey());
+            // Encrypt API key at rest (AES-256-GCM) — decrypted at point of use
+            String rawKey = personaProfile.getDeepseekApiKey();
+            entity.setDeepseekApiKey(rawKey != null ? encryptor.encrypt(rawKey) : null);
         } else {
             entity.setProfileName(city.equals("上海") ? "上海探索者" : "北京探索者");
             entity.setPreferredCity(city);

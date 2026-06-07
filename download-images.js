@@ -79,6 +79,17 @@ const POI_EN_NAMES = {
   '世纪公园': 'Century Park Shanghai China',
   '外滩源': 'Rockbund Shanghai China',
   '复旦大学': 'Fudan University Shanghai China',
+  // New SHOPPING / CULTURE POIs
+  'PageOne书店(三里屯店)': 'PageOne bookstore Sanlitun Beijing',
+  '红砖美术馆': 'Red Brick Art Museum Beijing China',
+  '798艺术区·UCCA': 'UCCA Center for Contemporary Art Beijing 798',
+  '言几又·今日阅读(国贸店)': 'Yan Ji You bookstore Beijing China',
+  '三里屯太古里买手店街': 'Taikoo Li Sanlitun boutique shopping Beijing',
+  '衡山·和集': 'Hengshan bookshop Shanghai China',
+  '西岸美术馆': 'West Bund Museum Shanghai China',
+  '香蕉鱼书店': 'Banana Fish bookstore Shanghai China',
+  '安福路买手店街': 'Anfu Road boutique stores Shanghai China',
+  '老场坊1933': '1933 Old Millfun Shanghai creative space',
 };
 
 // Diverse category-based queries — cycled through to maximize uniqueness
@@ -99,6 +110,18 @@ const CATEGORY_QUERIES = {
       'Beijing local cuisine', 'Beijing seafood', 'Beijing hot pot',
       'Beijing fine dining', 'Beijing dim sum',
     ],
+    'SHOPPING': [
+      'Beijing bookstore interior', 'Beijing boutique shopping',
+      'Beijing fashion store', 'Beijing designer shop',
+      'Beijing concept store', 'Beijing trendy shopping street',
+      'Beijing mall interior', 'Beijing retail store',
+    ],
+    'CULTURE': [
+      'Beijing art museum', 'Beijing contemporary art',
+      'Beijing gallery space', 'Beijing creative district',
+      'Beijing exhibition hall', 'Beijing cultural venue',
+      'Beijing architecture art', 'Beijing art center',
+    ],
   },
   '上海': {
     'ATTRACTION': [
@@ -114,6 +137,18 @@ const CATEGORY_QUERIES = {
       'Shanghai seafood', 'Shanghai noodles', 'Shanghai traditional food',
       'Shanghai upscale restaurant', 'Shanghai cafe', 'Shanghai dim sum',
       'Shanghai hot pot', 'Shanghai local food', 'Shanghai brunch',
+    ],
+    'SHOPPING': [
+      'Shanghai bookstore interior', 'Shanghai boutique store',
+      'Shanghai fashion shopping', 'Shanghai designer store',
+      'Shanghai concept store', 'Shanghai vintage shop',
+      'Shanghai shopping street', 'Shanghai mall interior',
+    ],
+    'CULTURE': [
+      'Shanghai art museum', 'Shanghai contemporary art gallery',
+      'Shanghai creative space', 'Shanghai cultural center',
+      'Shanghai exhibition hall', 'Shanghai art district',
+      'Shanghai architecture interior', 'Shanghai gallery space',
     ],
   }
 };
@@ -423,11 +458,14 @@ function parseChecklist(content) {
     if (line.includes('## 北京')) currentCity = '北京';
     else if (line.includes('## 上海')) currentCity = '上海';
     else if (line.startsWith('---')) currentCity = '';
-    let m = line.match(/^\|\s*(photo-\d+)\s*\|\s*(.+?)\s*\|\s*(景点|美食)\s*\|$/);
+    let m = line.match(/^\|\s*(photo-\d+)\s*\|\s*(.+?)\s*\|\s*(\S+?)\s*\|$/);
     if (m) pois.push({
       photoId: m[1],
       name: m[2].trim(),
-      category: m[3] === '美食' ? 'RESTAURANT' : 'ATTRACTION',
+      category: m[3] === '美食' ? 'RESTAURANT'
+              : m[3] === '景点' ? 'ATTRACTION'
+              : m[3] === 'CULTURE' ? 'CULTURE'
+              : m[3],
       city: currentCity,
     });
   }

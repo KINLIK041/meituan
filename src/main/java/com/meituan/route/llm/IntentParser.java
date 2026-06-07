@@ -94,10 +94,17 @@ public class IntentParser {
     );
 
     private final DynamicLLMProvider llmProvider;
+    private final com.meituan.route.security.LLMAuditLogger auditLogger;
+    private final com.meituan.route.security.LLMRateLimiter rateLimiter;
 
-    public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env, DynamicLLMProvider llmProvider) {
+    public IntentParser(Optional<ChatLanguageModel> chatModel, Environment env,
+                        DynamicLLMProvider llmProvider,
+                        com.meituan.route.security.LLMAuditLogger auditLogger,
+                        com.meituan.route.security.LLMRateLimiter rateLimiter) {
         this.chatModel = chatModel.orElse(null);
         this.llmProvider = llmProvider;
+        this.auditLogger = auditLogger;
+        this.rateLimiter = rateLimiter;
         this.mockProfile = java.util.Arrays.asList(env.getActiveProfiles()).contains("mock");
         this.llmAvailable = this.chatModel != null;
         log.info("IntentParser initialized (LLM: {}, mock: {})", llmAvailable ? "enabled" : "disabled", mockProfile);
@@ -153,11 +160,29 @@ public class IntentParser {
 示例: {"city":"%s","district":null,"categories":["RESTAURANT"],"cuisine":null,"startTime":"%s","endTime":"22:00","budget":150,"partySize":2,"minRating":4.0,"maxQueue":15,"travelMode":"WALKING","goal":"BEST_EXPERIENCE","keywords":["拍照"],"specialRequest":null}
 """.formatted(query, previousContext, nowStr, exampleCity, nowStr));
 
+        // Rate limiting: prevent API abuse and cost explosion
+        var userId = sessionId != null ? sessionId : "anonymous";
+        if (!rateLimiter.tryAcquire(userId, "internal")) {
+            log.warn("IntentParser: rate limited for session {}", userId);
+            throw new RuntimeException("请求过于频繁，请稍后再试 (rate limited)");
+        }
+
         // Use user's own model + API key if provided, otherwise system default
         var model = (userApiKey != null && !userApiKey.isBlank())
                 ? llmProvider.getModel(userProvider, userApiKey)
                 : chatModel;
+        var provider = (userProvider != null && !userProvider.isBlank())
+                ? userProvider : llmProvider.getDefaultProviderId();
+        int estimatedInput = auditLogger.estimateTokens(prompt);
+        long t0 = System.currentTimeMillis();
         var json = model.chat(prompt);
+        long latency = System.currentTimeMillis() - t0;
+        rateLimiter.release();
+
+        // Audit log: track every LLM call for cost attribution
+        int estimatedOutput = auditLogger.estimateTokens(json);
+        auditLogger.record(userId, provider, "deepseek-chat",
+                estimatedInput, estimatedOutput, latency);
 
         // Parse the JSON response
         return parseLLMResponse(json, query, sessionId);
@@ -446,6 +471,16 @@ public class IntentParser {
             if (!categories.contains("RESTAURANT")) {
                 categories.add("RESTAURANT");
             }
+        }
+
+        // Post-process: "人均 X" → per-person budget → convert to total budget
+        // LLM returns budget=X (per-person value), but ConstraintEngine treats it as total.
+        // Multiply by partySize so hard budget constraint works correctly.
+        if (originalQuery != null && originalQuery.contains("人均") && budget > 0) {
+            var totalBudget = budget * partySize;
+            log.info("IntentParser: '人均' detected — converting budget {} → {} (×{} people)",
+                    budget, totalBudget, partySize);
+            budget = totalBudget;
         }
 
         return new UserIntent(originalQuery, city, district, categories, cuisine,

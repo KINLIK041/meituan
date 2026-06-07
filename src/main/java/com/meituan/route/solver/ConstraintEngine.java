@@ -96,6 +96,15 @@ public class ConstraintEngine {
      * For hard budget: first try 20% increase, then 50%, then remove budget entirely.
      */
     public List<List<Constraint>> relaxConstraints(List<Constraint> constraints) {
+        return relaxConstraints(constraints, false);
+    }
+
+    /**
+     * Build constraint relaxation levels.
+     * @param preserveBudget when true, skip Level 2 (removing budget entirely) —
+     *   used for CHEAPEST goal where budget is the primary concern.
+     */
+    public List<List<Constraint>> relaxConstraints(List<Constraint> constraints, boolean preserveBudget) {
         var hard = constraints.stream().filter(c -> c.type() == Constraint.ConstraintType.HARD).toList();
         var soft = new ArrayList<>(constraints.stream()
                 .filter(c -> c.type() == Constraint.ConstraintType.SOFT)
@@ -135,17 +144,19 @@ public class ConstraintEngine {
             relaxations.add(relaxed50);
         }
 
-        // Level 2: remove budget hard constraint entirely
-        var noBudget = new ArrayList<>(constraints);
-        noBudget.removeIf(c -> "budget".equals(c.id()) && c.type() == Constraint.ConstraintType.HARD);
-        // Also remove two lowest soft constraints
-        if (soft.size() >= 2) {
-            for (int i = 0; i < Math.min(2, soft.size()); i++) {
-                var toRemove = soft.get(i);
-                noBudget.removeIf(c -> c.id().equals(toRemove.id()) && c.type() == Constraint.ConstraintType.SOFT);
+        // Level 2: remove budget hard constraint entirely (skipped for CHEAPEST)
+        if (!preserveBudget) {
+            var noBudget = new ArrayList<>(constraints);
+            noBudget.removeIf(c -> "budget".equals(c.id()) && c.type() == Constraint.ConstraintType.HARD);
+            // Also remove two lowest soft constraints
+            if (soft.size() >= 2) {
+                for (int i = 0; i < Math.min(2, soft.size()); i++) {
+                    var toRemove = soft.get(i);
+                    noBudget.removeIf(c -> c.id().equals(toRemove.id()) && c.type() == Constraint.ConstraintType.SOFT);
+                }
             }
+            relaxations.add(noBudget);
         }
-        relaxations.add(noBudget);
 
         return relaxations;
     }

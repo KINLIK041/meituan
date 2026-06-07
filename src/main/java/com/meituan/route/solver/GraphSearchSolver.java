@@ -277,7 +277,20 @@ public class GraphSearchSolver {
                     b.rating() * 10 + b.popularityScore() * 0.2 + barBoost(b) + ugcBoost(b),
                     a.rating() * 10 + a.popularityScore() * 0.2 + barBoost(a) + ugcBoost(a)));
         }
-        return sorted.subList(0, Math.min(15, sorted.size()));
+        // Ensure category diversity: after top-15 by score, inject up to 3 POIs
+        // from unrepresented categories so mixed-activity routes can be built (TC02).
+        var topN = Math.min(15, sorted.size());
+        var result = new ArrayList<>(sorted.subList(0, topN));
+        var representedCats = new java.util.HashSet<String>();
+        for (var p : result) representedCats.add(p.category());
+        for (var p : sorted) {
+            if (result.size() >= topN + 3) break;
+            if (!representedCats.contains(p.category())) {
+                result.add(p);
+                representedCats.add(p.category());
+            }
+        }
+        return result;
     }
 
     private static double barBoost(POI poi) {

@@ -59,8 +59,9 @@
 ## 性能指标
 
 > 📊 **[查看完整性能测试报告 →](./performance-reports/performance-report-latest.md)**
+> 🏆 **[查看竞赛测试用例报告 (TC01-TC18) →](./performance-reports/competition-test-report-latest.md)**
 >
-> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。测试覆盖 6 场景 × 2 城市、7 个 Chip 调整、10 并发、30 秒压力测试。
+> 以下数据来自云服务器（2C4G ECS）实测，mock 模式，DeepSeek v4 Flash API。性能测试覆盖 6 场景 × 2 城市、7 个 Chip 调整、10 并发、30 秒压力测试。竞赛测试覆盖 18 个功能验收用例（路线生成、约束验证、个性化、动态调整、鲁棒性）。
 
 ### 端到端延迟
 
@@ -361,9 +362,64 @@ v5:  ┌─ adjustRoute Phase1: Mono.zip(preprocess ‖ conversation)  真并行
 
 ---
 
-## 数据库设计
+## 🔒 AI 安全架构 (Enterprise AI Security)
 
-项目使用 **PostgreSQL 15+** 持久化会话和路线数据。Flyway 管理 4 张迁移表：
+> **企业评审重点** — 以下安全措施确保 AI API 调用安全、用户数据保护、成本可控。
+
+### 多层防护体系
+
+| 层级 | 措施 | 实现 |
+|------|------|------|
+| **传输层** | HTTPS/TLS 加密 | 生产环境 Nginx 反向代理强制 HTTPS |
+| **认证层** | JWT 无状态认证 | `AuthService.java` — 72h 过期, HMAC-SHA 签名 |
+| **授权层** | CORS 白名单 | `AppConfig.java` — 仅允许指定域名 + localhost |
+| **数据层** | API Key AES-256-GCM 加密存储 | `ApiKeyEncryptor.java` — 密钥从环境变量派生，数据库泄露也不会暴露明文 Key |
+| **流量层** | 多层 Rate Limiting | `LLMRateLimiter.java` — 用户级 30 RPM、IP 级 60 RPM、全局并发 ≤10 |
+| **审计层** | 全量 LLM 调用审计日志 | `LLMAuditLogger.java` — 记录每次调用的 user/provider/tokens/latency/cost |
+| **成本层** | Token 预算实时追踪 | 会话级累计 Token + 费用，超 $1 自动告警 |
+
+### API Key 安全流程
+
+```
+用户注册输入 API Key
+       ↓
+  AuthService 接收明文 Key
+       ↓
+  ApiKeyEncryptor.encrypt() → AES-256-GCM 加密
+       ↓
+  密文存入 PostgreSQL
+       ↓
+  路线规划时 resolveApiKey() → 返回密文
+       ↓
+  DynamicLLMProvider.getModel() → decrypt() → 临时明文 → 调用 LLM
+       ↓
+  调用结束立即释放（不落盘、不缓存明文）
+```
+
+### 多协议 LLM 支持
+
+项目正确区分两种不兼容的 AI 协议：
+
+| 协议 | 提供商 | LangChain4j 模型类 |
+|------|--------|-------------------|
+| **OpenAI 兼容** | DeepSeek, OpenAI, Moonshot, Zhipu, Qwen | `OpenAiChatModel` |
+| **Anthropic 原生** | Claude (Sonnet/Opus) | `AnthropicChatModel` |
+
+> ⚠️ Anthropic 使用完全不同的 API 协议（`/v1/messages` + 独立 system 字段），不能用 `OpenAiChatModel` 兼容。项目已通过 `DynamicLLMProvider` 按 provider 类型自动选择正确的模型类。
+
+### 成本预估
+
+| 模型 | 每百万 Token 输入 | 1 万次规划估算 |
+|------|-------------------|---------------|
+| DeepSeek V3 | $0.28 | ≈ $1.26 |
+| OpenAI GPT-4o | $5.00 | ≈ $22.50 |
+| Anthropic Claude Sonnet | $8.00 | ≈ $36.00 |
+
+> 项目默认使用 DeepSeek，单次路线规划约 450 tokens，成本极低。
+
+---
+
+## 数据库设计
 
 ### 表结构
 

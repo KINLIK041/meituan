@@ -426,9 +426,33 @@
 
 | 城市 | POI数量 | 图片编号范围 |
 |------|---------|-------------|
-| 北京 | 200个 | photo-001 ~ photo-200 |
-| 上海 | 200个 | photo-201 ~ photo-400 |
-| **合计** | **400个** | **photo-001 ~ photo-400** |
+| 北京 | 205个 | photo-001 ~ photo-200, photo-401 ~ photo-405 |
+| 上海 | 205个 | photo-201 ~ photo-400, photo-406 ~ photo-410 |
+| **合计** | **410个** | **photo-001 ~ photo-410** |
+
+## 新增 SHOPPING / CULTURE 类别 POI (photo-401 ~ photo-410)
+
+### 北京 (photo-401 ~ photo-405)
+
+| 编号 | POI名称 | 类型 |
+|------|---------|------|
+| photo-401 | PageOne书店(三里屯店) | SHOPPING |
+| photo-402 | 红砖美术馆 | CULTURE |
+| photo-403 | 798艺术区·UCCA | CULTURE |
+| photo-404 | 言几又·今日阅读(国贸店) | SHOPPING |
+| photo-405 | 三里屯太古里买手店街 | SHOPPING |
+
+### 上海 (photo-406 ~ photo-410)
+
+| 编号 | POI名称 | 类型 |
+|------|---------|------|
+| photo-406 | 衡山·和集 | SHOPPING |
+| photo-407 | 西岸美术馆 | CULTURE |
+| photo-408 | 香蕉鱼书店 | SHOPPING |
+| photo-409 | 安福路买手店街 | SHOPPING |
+| photo-410 | 老场坊1933 | CULTURE |
+
+---
 
 ## 图片获取建议
 

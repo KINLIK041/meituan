@@ -46,11 +46,18 @@ public class DiscoveryAgent {
             // searching all 5 categories would dilute results with attractions
             // that have higher ratings but are irrelevant to keyword-based queries.
             if (hasKeywords) {
-                categories = List.of("RESTAURANT", "ENTERTAINMENT");
+                categories = new ArrayList<>(List.of("RESTAURANT", "ENTERTAINMENT"));
             } else {
-                categories = List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT", "CULTURE");
+                categories = new ArrayList<>(List.of("RESTAURANT", "ATTRACTION", "SHOPPING", "ENTERTAINMENT", "CULTURE"));
             }
+        } else {
+            // Ensure mutable so we can expand below
+            categories = new ArrayList<>(categories);
         }
+        // Expand categories for mixed-activity queries: 逛逛/逛街 + 吃饭/咖啡
+        // so users get multi-POI routes (TC02, TC08). Apply regardless of whether
+        // LLM parsed categories or we used defaults.
+        expandCategoriesForMixedActivity(categories, intent);
 
         // Parallel search across categories
         var poiFluxes = new ArrayList<>(categories.stream()
@@ -160,6 +167,22 @@ public class DiscoveryAgent {
         return poi.tags().stream().anyMatch(t ->
                 t.contains("酒") || t.contains("吧") || t.contains("精酿") || t.contains("居酒屋")
                 || t.contains("小酌") || t.contains("深夜"));
+    }
+
+    /** Expand categories when query implies mixed activities (逛逛 + 吃饭 + 咖啡). */
+    private void expandCategoriesForMixedActivity(List<String> categories, UserIntent intent) {
+        var q = intent.rawQuery();
+        if (q == null) return;
+        boolean hasStroll = q.contains("逛") || q.contains("散步") || q.contains("走走")
+                || q.contains("看展") || q.contains("逛街");
+        boolean hasEat = q.contains("吃") || q.contains("饭") || q.contains("咖啡")
+                || q.contains("喝") || q.contains("茶");
+        if (hasStroll && hasEat) {
+            if (!categories.contains("ATTRACTION")) categories.add("ATTRACTION");
+            if (!categories.contains("SHOPPING")) categories.add("SHOPPING");
+            if (!categories.contains("CULTURE")) categories.add("CULTURE");
+            log.info("DiscoveryAgent: expanded categories for mixed activity → {}", categories);
+        }
     }
 
     /** Last-resort fallback: search all available categories. */

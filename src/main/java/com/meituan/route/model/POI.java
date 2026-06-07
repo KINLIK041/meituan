@@ -61,4 +61,18 @@ public record POI(
     public boolean hasUGC() {
         return !ugcTags.isEmpty() || !ugcSummary.isEmpty();
     }
+
+    /** Return a copy with a different queueTime. */
+    public POI withQueueTime(double newQueueTime) {
+        return new POI(id, name, category, subCategory, lat, lng, address, district, city,
+                rating, avgCost, newQueueTime, openTime, closeTime, visitDuration,
+                tags, imageUrl, description, popularityScore, ugcTags, ugcSummary, riskTags);
+    }
+
+    /** Return a copy with UGC review data added. */
+    public POI withUGC(List<String> newUgcTags, String newUgcSummary, List<String> newRiskTags) {
+        return new POI(id, name, category, subCategory, lat, lng, address, district, city,
+                rating, avgCost, queueTime, openTime, closeTime, visitDuration,
+                tags, imageUrl, description, popularityScore, newUgcTags, newUgcSummary, newRiskTags);
+    }
 }
