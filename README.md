@@ -137,48 +137,44 @@ planRoute 典型请求 (1,165ms)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Frontend (routeplan/)                                       │
-│  React 18 + Tailwind CSS + 纯静态页面，无需构建工具             │
+│  Web 前端 (routeplan/)                                        │
+│  React 18 + Tailwind CSS + 纯静态文件，无需 npm/build          │
+│  后端启动后浏览器直接打开 index.html，自动连接 localhost:8081    │
 │                                                              │
-│  入口路径:                                                    │
+│  交互路径:                                                    │
 │    场景卡片 → NeedCompletionCard (Q&A 补全) → 路线方案         │
 │    自然语言 → LLM 意图分析 → FollowupCard/ConflictCard → 路线  │
 │    路线页面 → Chip 快捷调整 / 对比面板 / 继续对话               │
 └──────────────────────┬───────────────────────────────────────┘
-                       │ HTTP POST /api/route/agent-plan (默认)
+                       │ HTTP POST /api/route/plan
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Backend (Spring Boot 3.4 + Java 21 + WebFlux)               │
 │                                                              │
 │  RouteController (REST API)                                  │
-│    POST /api/route/agent-plan — Agent Loop 路线规划（默认）    │
-│    POST /api/route/smart-plan — 固定流水线路线规划             │
-│    POST /api/route/plan     — 基础路线规划                     │
-│    POST /api/route/adjust   — 增量调整路线                     │
-│    GET  /api/route/pois     — POI 数据（含 UGC）              │
-│    GET  /api/route/compare  — 多方案对比                       │
+│    POST /api/route/plan     — 5-Agent 流水线路线规划（默认）    │
+│    POST /api/route/analyze  — 自然语言意图分析                  │
+│    POST /api/route/smart-plan — 分析 + 路线规划（含追问）       │
+│    POST /api/route/adjust   — 增量调整路线                      │
+│    POST /api/route/agent-plan — Agent Loop 演示（学术展示用）   │
+│    GET  /api/route/pois     — POI 数据（含 UGC）               │
+│    GET  /api/route/compare  — 多方案对比                        │
 │                                                              │
-│  ┌─ Agent Loop（v7 新架构, 默认启用）────────────┐           │
-│  │ Route Concierge Agent (LLM 动态决策)            │           │
-│  │                                                 │           │
-│  │  while (not done):                              │           │
-│  │    action = llm.decide(context, tools)          │           │
-│  │    result = execute_tool(action)                │           │
-│  │    context += result                            │           │
-│  │                                                 │           │
-│  │  Tools:                                         │           │
-│  │  ┌──────────────────┬──────────────────────┐    │           │
-│  │  │ parse_user_intent│ get_user_profile     │    │           │
-│  │  │ search_pois      │ generate_routes      │    │           │
-│  │  │ check_constraints│ score_and_rank       │    │           │
-│  │  │ explain_routes   │                      │    │           │
-│  │  └──────────────────┴──────────────────────┘    │           │
-│  └─────────────────────────────────────────────────┘           │
+│  ┌─ 5-Agent 固定流水线（默认架构，~2s 响应）──────────────────┐  │
+│  │                                                           │  │
+│  │  ConversationAgent ──→ DiscoveryAgent ──→ PlanningAgent   │  │
+│  │   (意图解析+LLM)         (POI搜索+过滤)      (路线生成)     │  │
+│  │        │                                            │     │  │
+│  │        └──→ ConstraintAgent ──→ ExplanationAgent ──┘     │  │
+│  │             (约束验证+打分)      (解释生成·非LLM)          │  │
+│  │                                                           │  │
+│  │  特点: 确定性、低延迟（~2s）、LLM 不可用时自动降级规则引擎   │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                                                              │
-│  ┌─ 固定流水线（兼容保留）─────────────────────────┐          │
-│  │ Conversation → Discovery → Planning →            │          │
-│  │ Constraint → Explanation (Mono.zip 并行)          │          │
-│  └─────────────────────────────────────────────────┘          │
+│  ┌─ Agent Loop（学术展示用，~30s）───────────────────────────┐  │
+│  │ 单 Agent + @Tool 注解，langchain4j AiServices 自动编排     │  │
+│  │ 访问 /api/route/agent-plan 端点体验                        │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                                                              │
 │  Infrastructure                                               │
 │  ┌──────────┬──────────┬──────────┬──────────────────┐       │
@@ -188,17 +184,18 @@ planRoute 典型请求 (1,165ms)
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 架构演进：v6 → v7（Agent Loop）
+### 架构：5-Agent 固定流水线（生产）+ Agent Loop（学术展示）
 
-| 维度 | v6: 5 Agent 固定流水线 | v7: 1 主 Agent + 7 工具 |
+| 维度 | 5-Agent 固定流水线（默认） | Agent Loop（实验性） |
 |------|----------------------|---------------------|
 | 决策方式 | 代码固定顺序执行 | LLM 动态决定调用哪些工具 |
-| 灵活性 | 每次请求全量跑 5 个 Agent | 按需按场景智能调用 |
-| 扩展性 | 改编排器代码 | 注册新 Tool 即可 |
-| 可解释性 | 各阶段独立黑盒 | 完整工具调用链可见可追溯 |
-| 比赛叙事 | "传统微服务编排" | **"AI-native Agent 架构"** |
+| 响应时间 | **~2s** | ~30s（多次 LLM 调用） |
+| 灵活性 | 每次全量跑 5 个 Agent | 按需按场景智能调用 |
+| 扩展性 | 改编排器代码 | 注册新 @Tool 方法即可 |
+| 可用性 | LLM 不可用时自动降级规则引擎 | 依赖 LLM 稳定运行 |
+| 定位 | **生产环境** | **比赛展示 / 架构演示** |
 
-> **兼容性说明：** v7 新增 `AgentLoopOrchestrator`，原有 `RoutePlannerOrchestrator`（五 Agent 流水线）完整保留。前端通过 `window.setAgentMode(false)` 可随时回退到 v6 固定流水线。
+> **当前状态：** 5-Agent 流水线为生产默认架构，Agent Loop 保留在 `/api/route/agent-plan` 端点供学术展示。
 
 ### 延迟优化
 
@@ -666,10 +663,12 @@ meituan/
 │   ├── ConstraintEngineTest.java
 │   └── GraphSearchSolverTest.java
 │
-├── routeplan/                             # ★ 前端 (纯静态)
-│   ├── index.html                         # 入口 (React CDN + Tailwind)
+├── routeplan/                             # ★ Web 前端（纯静态 HTML/JS/CSS）
+│   │                                       #   无需 npm install，无需构建工具
+│   │                                       #   后端启动后，浏览器打开 index.html 即可使用
+│   ├── index.html                         # 入口 (React CDN + Tailwind CDN)
 │   ├── app.jsx                            # 主应用 (状态机: welcome→completing→route)
-│   ├── api.js                             # API 调用层
+│   ├── api.js                             # API 调用层（自动连接 localhost:8081）
 │   ├── chat-screen.jsx                    # 对话主界面
 │   ├── components.jsx                     # 通用 UI (Icon, Chip, StatusPill 等)
 │   ├── route-detail.jsx                   # 路线详情页（含 4 图展示）
@@ -678,13 +677,13 @@ meituan/
 │   ├── history-panel.jsx                  # 历史记录面板
 │   ├── favorites-panel.jsx                # 收藏面板
 │   ├── share-panel.jsx                    # 分享面板
-│   ├── images/stores/                     # 店铺图片 (photo-001-1.jpg ~ photo-400-4.jpg)
+│   ├── images/stores/                     # 店铺图片 (photo-001-1.jpg ~ photo-410-4.jpg)
 │   └── mock-data/                         # 前端 Mock 数据源（JSX）
 │       ├── beijing-pois.jsx               # 200 北京 POI
 │       ├── shanghai-pois.jsx              # 200 上海 POI
-│       ├── index.jsx                      # 数据入口
+│       ├── index.jsx                      # 数据入口（优先从后端 API 加载）
 │       ├── route-builder.jsx              # 通用路线组装
-│       └── photo-checklist.md             # 图片清单（400 POI）
+│       └── photo-checklist.md             # 图片清单（410 POI）
 │
 ├── screenshots/                           # 项目截图 (6 张)
 │   ├── home.png
@@ -979,6 +978,17 @@ SPRING_PROFILES_ACTIVE=mysql mvn spring-boot:run
 
 ## 关于项目组织
 
-- `routeplan/` — Web 前端，纯静态页面，浏览器直接打开
-- `pom.xml` + `src/` — Spring Boot 后端，Maven 标准布局
-- 不引入 React Native / 额外构建工具，保持依赖最小化
+### 前端（`routeplan/`）如何使用？
+
+**不需要任何命令行工具。** 前端是纯静态 HTML/JS/CSS 文件：
+
+1. **先启动后端**：`mvn spring-boot:run`（后端默认运行在 `http://localhost:8081`）
+2. **再打开前端**：直接用浏览器打开 `routeplan/index.html` 即可使用全部功能
+
+> 前端通过 `api.js` 自动检测运行环境，本地开发时连接 `http://localhost:8081`，部署到服务器后自动连接同域后端。无需 `npm install`、无需 `npm start`、无需任何构建工具。
+
+### 技术栈
+
+- `routeplan/` — Web 前端（React 18 + Tailwind CSS，均通过 CDN 加载，纯静态文件）
+- `pom.xml` + `src/` — Spring Boot 3.4 后端（Java 21 + WebFlux + Maven）
+- 不引入 Node.js / Webpack / Vite，保持依赖最小化，浏览器即运行环境
