@@ -55,6 +55,7 @@ const INITIAL_STATE = {
   routes: null,       // API response routes for RouteOptionsCard
   sessionId: null,    // backend session id
   detailRoute: null,  // selected route for detail page
+  routeWarning: null,  // backend warning (budget ceiling, etc.)
   conversationMessages: [], // accumulated route-history blocks for chat-like flow
 };
 
@@ -68,47 +69,77 @@ function App() {
   const [currentUser, setCurrentUser] = useStateApp(null);
 
   // Sync city and user to global window
-  useEffectApp(() => { window._currentCity = city; }, [city]);
+  // Use safe setter that works with Object.defineProperty interception in mock-data/index.jsx
+  useEffectApp(() => {
+    if (typeof window._setCityDirectly === 'function') {
+      window._setCityDirectly(city);
+    } else {
+      window._currentCity = city;
+    }
+  }, [city]);
   useEffectApp(() => { window._currentUserId = currentUser ? currentUser.userId : null; }, [currentUser]);
 
   // Auth gate: must login before using the product
   const [showLogin, setShowLogin] = useStateApp(true);
-  // Expose for api.js to trigger on 401
-  useEffectApp(function() { window._showLogin = function() { setShowLogin(true); }; return function() { delete window._showLogin; }; }, []);
+  // Expose for api.js to trigger on 401 — also resets React state properly
+  useEffectApp(function() {
+    window._showLogin = function() {
+      // Clear stale user state so the login gate re-appears
+      setCurrentUser(null);
+      setAuthChecked(true);
+      setShowLogin(true);
+    };
+    return function() { delete window._showLogin; };
+  }, []);
   const [authChecked, setAuthChecked] = useStateApp(false);
-  useEffectApp(() => {
+
+  // Auth check — use cached credentials directly (synchronous, no blocking fetch).
+  // Token validity is verified by backend 401 responses on actual API calls,
+  // which trigger the login modal via api.js → window._showLogin().
+  // This avoids blocking the UI on a slow /api/auth/me call when the backend is running.
+  useEffectApp(function() {
     var authUser = null;
     var token = null;
     try {
       authUser = JSON.parse(localStorage.getItem('_authUser') || 'null');
       token = localStorage.getItem('_authToken');
     } catch(e) {}
+
     if (authUser && authUser.userId && token) {
-      // Validate token with backend
-      fetch((window.API_BASE || '') + '/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }).then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.success) {
-            setCurrentUser(authUser);
-            setShowLogin(false);
-          }
-          setAuthChecked(true);
-        })
-        .catch(function() {
-          // Backend not reachable — still allow login with cached token
-          setCurrentUser(authUser);
-          setShowLogin(false);
-          setAuthChecked(true);
-        });
-    } else {
-      setAuthChecked(true);
+      setCurrentUser(authUser);
+      setShowLogin(false);
     }
+    setAuthChecked(true);
   }, []);
 
-  // Save current conversation to history (called when user starts a new one).
-  // Records at the conversation level, not per-route.
+  // ─── Conversation history with localStorage persistence (per user) ────
   const recordRef = React.useRef({ suppress: false });
+
+  // Load user's history from localStorage on login
+  useEffectApp(() => {
+    var uid = currentUser && currentUser.userId;
+    if (uid) {
+      try {
+        var key = '_chatHistory_' + uid;
+        var raw = localStorage.getItem(key);
+        var stored = raw ? JSON.parse(raw) : [];
+        if (stored.length > 0) setHistory(stored);
+      } catch(e) {}
+    } else if (!currentUser) {
+      setHistory([]);
+    }
+  }, [currentUser ? currentUser.userId : null]);
+
+  // Persist history to localStorage when it changes
+  useEffectApp(() => {
+    var uid = currentUser && currentUser.userId;
+    if (uid && history.length > 0) {
+      try {
+        var key = '_chatHistory_' + uid;
+        localStorage.setItem(key, JSON.stringify(history.slice(-50)));
+      } catch(e) {}
+    }
+  }, [history, currentUser ? currentUser.userId : null]);
 
   const saveConversationToHistory = (s) => {
     if (recordRef.current.suppress) {
@@ -116,16 +147,16 @@ function App() {
       return;
     }
     // Only save if there's meaningful conversation (has routes or messages)
-    const msgs = s.conversationMessages || [];
-    const hasContent = s.routes || msgs.length > 0 || s.scene;
+    var msgs = s.conversationMessages || [];
+    var hasContent = s.routes || msgs.length > 0 || s.scene;
     if (!hasContent) return;
 
     // Find first user message as conversation summary
-    const firstUserMsg = msgs.find(function(m) { return m.type === 'user'; });
-    const routeMsgs = msgs.filter(function(m) { return m.type === 'route'; });
+    var firstUserMsg = msgs.find(function(m) { return m.type === 'user'; });
+    var routeMsgs = msgs.filter(function(m) { return m.type === 'route'; });
 
     setHistory(function(h) {
-      return h.concat([{
+      var entry = {
         ts: Date.now(),
         timeLabel: '刚刚',
         scene: s.scene || (firstUserMsg ? '对话' : '未指定'),
@@ -135,7 +166,8 @@ function App() {
         routes: s.routes,
         sessionId: s.sessionId,
         conversationMessages: msgs,
-      }]);
+      };
+      return h.concat([entry]);
     });
   };
 
@@ -232,6 +264,10 @@ function App() {
             conversationMessages: prevMessages,
             sessionId: result.sessionId || sid,
           }));
+        }).catch(function(err) {
+          console.error('[handleSend] adjustWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'route', conversationMessages: prevMessages }));
+          showToast('调整失败，请重试');
         });
         return { ...s, stage: 'generating', activeChip: adj.chipLabel, conversationMessages: prevMessages, routes: null };
       });
@@ -264,6 +300,7 @@ function App() {
     }));
 
     // ── Unified smart-plan call (single HTTP round-trip) ──
+    try {
     var smartResult = await window.smartPlan(trimmed, sid, city);
 
     // Determine effective city: LLM-detected city from query takes priority over tag
@@ -297,6 +334,10 @@ function App() {
             ...s2, stage: 'route', scene: analysis2.scene, nl: analysis2,
             routes: result.routes, sessionId: result.sessionId || sid,
           }));
+        }).catch(function(err) {
+          console.error('[handleSend] planWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'welcome' }));
+          showToast('路线生成失败，请重试');
         });
       }
     } else {
@@ -308,6 +349,10 @@ function App() {
             ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
             routes: result.routes, sessionId: result.sessionId || sid,
           }));
+        }).catch(function(err) {
+          console.error('[handleSend] planWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'welcome' }));
+          showToast('路线生成失败，请重试');
         });
       } else if (hAnalysis.branch === 'followup') {
         hAnalysis._detectedCity = effectiveCity;
@@ -320,8 +365,17 @@ function App() {
             ...s2, stage: 'route', scene: hAnalysis.scene, nl: hAnalysis,
             routes: result.routes, sessionId: result.sessionId || sid,
           }));
+        }).catch(function(err) {
+          console.error('[handleSend] planWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'welcome' }));
+          showToast('路线生成失败，请重试');
         });
       }
+    }
+    } catch (err) {
+      console.error('[handleSend] smartPlan error:', err);
+      setChatState((s2) => ({ ...s2, stage: 'welcome' }));
+      showToast('请求失败，请重试');
     }
   };
 
@@ -343,7 +397,11 @@ function App() {
           type: 'user', text: query, _key: Date.now(),
         }]);
         window.planWithFallback(query, nextScene, nextAnswers, effectiveCity).then((result) => {
-          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, conversationMessages: prevMessages, sessionId: result.sessionId || s2.sessionId }));
+          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, routeWarning: result.warning || null, conversationMessages: prevMessages, sessionId: result.sessionId || s2.sessionId }));
+        }).catch(function(err) {
+          console.error('[handleNLFollowupAnswer] planWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'nl_followup' }));
+          showToast('路线生成失败，请重试');
         });
         return { ...s, answers: nextAnswers, stage: 'generating', conversationMessages: prevMessages };
       }
@@ -370,7 +428,11 @@ function App() {
       }]);
       var effectiveCity = (s.nl && s.nl._detectedCity) || city;
       window.planWithFallback(query, s.scene || '朋友聚会', s.answers, effectiveCity).then((result) => {
-        setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
+        setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, routeWarning: result.warning || null, sessionId: result.sessionId }));
+      }).catch(function(err) {
+        console.error('[handleConflictPriority] planWithFallback error:', err);
+        setChatState((s2) => ({ ...s2, stage: 'nl_conflict' }));
+        showToast('路线生成失败，请重试');
       });
       return { ...s, stage: 'generating', conflictPriority: priority, conversationMessages: prevMessages };
     });
@@ -393,7 +455,11 @@ function App() {
       if (allDone) {
         const query = window.buildQueryFromScene(s.scene, nextAnswers);
         window.planWithFallback(query, s.scene, nextAnswers, city).then((result) => {
-          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
+          setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, routeWarning: result.warning || null, sessionId: result.sessionId }));
+        }).catch(function(err) {
+          console.error('[handleAnswer] planWithFallback error:', err);
+          setChatState((s2) => ({ ...s2, stage: 'completing' }));
+          showToast('路线生成失败，请重试');
         });
         return { ...s, answers: nextAnswers, stage: 'generating' };
       }
@@ -406,7 +472,11 @@ function App() {
     setChatState((s) => {
       const query = window.buildQueryFromScene(s.scene, s.answers);
       window.planWithFallback(query, s.scene, s.answers, city).then((result) => {
-        setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, sessionId: result.sessionId }));
+        setChatState((s2) => ({ ...s2, stage: 'route', routes: result.routes, routeWarning: result.warning || null, sessionId: result.sessionId }));
+      }).catch(function(err) {
+        console.error('[handleSkipCompletion] planWithFallback error:', err);
+        setChatState((s2) => ({ ...s2, stage: 'completing' }));
+        showToast('路线生成失败，请重试');
       });
       return { ...s, stage: 'generating', defaulted: true };
     });
@@ -454,6 +524,10 @@ function App() {
           conversationMessages: prevMessages,
           sessionId: result.sessionId || sid,
         }));
+      }).catch(function(err) {
+        console.error('[handleChip] adjustWithFallback error:', err);
+        setChatState((s2) => ({ ...s2, stage: 'route', conversationMessages: prevMessages }));
+        showToast('调整失败，请重试');
       });
       return { ...s, stage: 'generating', activeChip: label, conversationMessages: prevMessages };
     });

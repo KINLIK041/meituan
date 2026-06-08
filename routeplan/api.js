@@ -16,10 +16,10 @@ const API_BASE = (function() {
 
 // ─── Fetch with timeout ───────────────────────────────────────────
 
-/** Wraps fetch with an AbortController timeout (default 15s). Adds auth header. */
+/** Wraps fetch with an AbortController timeout (default 30s for LLM calls). Adds auth header. */
 function fetchWithTimeout(url, options, timeoutMs) {
   var controller = new AbortController();
-  var ms = timeoutMs || 15000;
+  var ms = timeoutMs || 30000;
   var timer = setTimeout(function() { controller.abort(); }, ms);
   var opts = Object.assign({}, options, { signal: controller.signal });
   // Add auth token if available
@@ -30,10 +30,12 @@ function fetchWithTimeout(url, options, timeoutMs) {
   }
   return fetch(url, opts)
     .then(function(res) {
-      // 401/403 → trigger login modal
+      // 401/403 → trigger login modal and clear stale credentials
       if ((res.status === 401 || res.status === 403) && window._showLogin) {
         try { localStorage.removeItem('_authToken'); localStorage.removeItem('_authUser'); } catch(e) {}
-        window._showLogin();
+        // Defer _showLogin call so the current request chain can settle
+        // without causing state inconsistencies in React
+        setTimeout(function() { window._showLogin(); }, 0);
       }
       return res;
     })

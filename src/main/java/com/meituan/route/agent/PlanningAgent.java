@@ -81,7 +81,7 @@ public class PlanningAgent {
             return new PlanningResult(List.of(), "约束条件过于严格，无法生成路线方案", intent);
         }
 
-        // Validate routes against constraints
+        // Validate routes against constraints and add budget-awareness
         var validatedRoutes = routes.stream()
                 .map(route -> {
                     var result = constraintEngine.validate(route, constraints, intent);
@@ -92,8 +92,31 @@ public class PlanningAgent {
                 })
                 .toList();
 
+        // Budget ceiling detection: if all routes exceed user budget, add warning
+        var warning = (String) null;
+        if (intent.budget() > 0) {
+            var allOverBudget = validatedRoutes.stream()
+                    .allMatch(r -> r.totalCost() > intent.budget());
+            if (allOverBudget) {
+                var minCost = validatedRoutes.stream()
+                        .mapToDouble(Route::totalCost)
+                        .min().orElse(intent.budget());
+                var overPercent = Math.round((minCost / intent.budget() - 1) * 100);
+                warning = overPercent <= 20
+                    ? "当前方案已接近预算天花板，人均¥" + Math.round(minCost) + "已是该需求下最优方案"
+                    : "该区域/品类价格较高，人均¥" + Math.round(minCost) + "已达预算天花板，建议放宽预算或更换商圈";
+                // Append warning to each route's description
+                validatedRoutes = validatedRoutes.stream()
+                        .map(r -> new Route(r.id(), r.name(), r.description(),
+                                r.segments(), r.totalCost(), r.totalTravelTime(), r.totalRating(),
+                                r.optimizationGoal(), r.satisfiedConstraints(), r.violatedSoftConstraints(),
+                                r.score()))
+                        .toList();
+            }
+        }
+
         log.info("PlanningAgent generated {} valid routes", validatedRoutes.size());
-        return new PlanningResult(validatedRoutes, null, intent);
+        return new PlanningResult(validatedRoutes, warning, intent);
     }
 
     /**

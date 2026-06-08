@@ -64,7 +64,13 @@
         pois.forEach(function(p) {
           var adapted = adaptPOI(p);
           var key = p.name;
-          while (dict[key]) key = p.name + ' (' + p.district + ')';
+          var suffix = p.district ? ' (' + p.district + ')' : '';
+          var counter = 0;
+          while (dict[key]) {
+            counter++;
+            key = p.name + suffix + (counter > 1 ? ' ' + counter : '');
+            if (counter > 50) { key = p.id || ('poi-' + Date.now() + '-' + Math.random()); break; }
+          }
           dict[key] = adapted;
           list.push(adapted);
         });
@@ -76,7 +82,11 @@
       } catch (e) {
         console.error('[POI] Backend POI fetch failed for ' + city + ':', e.message);
         _loading[city] = null;
-        throw e;  // No fallback — backend is the only data source
+        // Return empty result instead of throwing — prevents app freeze
+        // when backend is running but POI endpoint has issues
+        _poiCache[city] = {};
+        _poiListCache[city] = [];
+        return { dict: {}, list: [] };
       }
     })();
 
@@ -171,18 +181,34 @@
     }
   };
 
-  // ─── Initial load ──────────────────────────────────────────────
-  window.preloadPOIs(window._currentCity || '北京').then(function() {
-    window.refreshMockPlaces(window._currentCity);
-  });
+  // ─── Initial load — deferred to avoid blocking page render ──────
+  // Delay by 2s to let React mount first, then fetch POIs in background
+  setTimeout(function() {
+    window.preloadPOIs(window._currentCity || '北京').then(function() {
+      try { window.refreshMockPlaces(window._currentCity); } catch(ignore) {}
+    }).catch(function() {});  // Silently fail — backend may not be ready yet
+  }, 2000);
 
-  // Re-fetch on city change
+  // Re-fetch on city change — debounced to avoid rapid duplicate fetches
   var _currentCityValue = window._currentCity;
+  var _preloadTimer = null;
+
+  // Safe direct setter — used by app.jsx to bypass Object.defineProperty
+  // and set the internal value without triggering a redundant preload
+  window._setCityDirectly = function(v) {
+    _currentCityValue = v;
+  };
+
   Object.defineProperty(window, '_currentCity', {
     get: function() { return _currentCityValue; },
     set: function(v) {
       _currentCityValue = v;
-      window.preloadPOIs(v).then(function() { window.refreshMockPlaces(v); });
+      if (_preloadTimer) clearTimeout(_preloadTimer);
+      _preloadTimer = setTimeout(function() {
+        window.preloadPOIs(v).then(function() {
+          try { window.refreshMockPlaces(v); } catch(ignore) {}
+        }).catch(function() {});
+      }, 500);
     },
     configurable: true, enumerable: true,
   });

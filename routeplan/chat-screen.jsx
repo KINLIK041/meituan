@@ -936,7 +936,19 @@ function ChatScreen({
     return () => { delete window._setShareOpen; };
   }, []);
 
-  // No auto-scroll — let user control scroll position
+  // Scroll to top when new routes appear (not on adjustment loading)
+  var prevStage = useRefChat(chatState.stage);
+  useEffectChat(() => {
+    var was = prevStage.current;
+    prevStage.current = chatState.stage;
+    // Only scroll to top when routes first appear (completing/generating/welcome → route)
+    // NOT when adjusting (route → generating → route)
+    var fromNonRoute = was !== 'route';
+    var toRoute = chatState.stage === 'route';
+    if (fromNonRoute && toRoute && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [chatState.stage]);
 
   const handleSendInput = () => {
     if (!input.trim()) return;
@@ -1117,6 +1129,19 @@ function ChatScreen({
                 <div style={{ height: 8 }} />
                 <SystemPromptCard scene={chatState.scene} onChangeScene={onResetScene} />
               </>
+            )}
+            {/* Budget ceiling / constraint warning */}
+            {chatState.routeWarning && (
+              <div style={{
+                margin: '0 16px 10px', padding: '10px 14px',
+                background: '#FFFBF4', border: '1px solid #FFE4C4',
+                borderRadius: 10, fontSize: 12.5, color: '#D14600',
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                lineHeight: 1.5,
+              }}>
+                <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
+                <span>{chatState.routeWarning}</span>
+              </div>
             )}
             <RouteOptionsCard
               scene={chatState.scene || '朋友聚会'}

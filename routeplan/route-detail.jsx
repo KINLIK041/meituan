@@ -668,7 +668,7 @@ function ImageLightbox({ open, place, imgIdx, onClose, onNav }) {
           <img src={imgSrc} alt={place.name} style={{
             width: '100%', height: '100%', objectFit: 'contain',
             display: 'block'
-          }} />
+          }} onError={function(e) { e.target.style.display = 'none'; }}/>
         ) : (
           <span>店铺实拍<br />{place.name}<br />图 {imgIdx + 1} / {total}</span>
         )}
@@ -958,7 +958,7 @@ function PlaceBlock({ place, index, active, onClick, onDetail, onSwap, onImageOp
                 <img src={imgSrc} alt={place.name} style={{
                   width: '100%', height: '100%', objectFit: 'cover',
                   display: 'block'
-                }} />
+                }} onError={function(e) { e.target.style.display = 'none'; }}/>
               ) : null}
               <span style={{
               position: 'absolute', left: 0, bottom: 0, margin: 5,
@@ -1334,7 +1334,7 @@ function PoiDetailSheet({ place, open, onClose, onNavigate }) {
           {headerImg ? (
             <img src={headerImg} alt={place.name} style={{
               width: '100%', height: '100%', objectFit: 'cover'
-            }} />
+            }} onError={function(e) { e.target.style.display = 'none'; }}/>
           ) : (
             <div style={{
               width: '100%', height: '100%',
@@ -1544,6 +1544,13 @@ function RouteDetailScreen({ route, onBack, toast, setToast }) {
   const [shareRoute, setShareRoute] = useStateRD(null);
   const scrollRef = useRefRD(null);
   const cardRefs = useRefRD({});
+
+  // Scroll to top on mount — prevent auto-bottom
+  useEffectRD(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, []);
 
   const registerCardRef = (idx, el) => {if (el) cardRefs.current[idx] = el;};
 

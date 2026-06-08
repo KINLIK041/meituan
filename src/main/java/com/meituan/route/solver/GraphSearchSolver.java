@@ -438,9 +438,12 @@ public class GraphSearchSolver {
                     // Hard constraint: don't cross midnight
                     if (arrivalTime.isBefore(entry.departureTime) && entry.departureTime.getHour() >= 18) continue;
 
+                    // Hard constraint: budget check — skip POIs that push route over budget
+                    double newCost = entry.totalCost + nextPOI.avgCost();
+                    if (intent.budget() > 0 && newCost > intent.budget() * 1.1) continue;
+
                     double poiScore = computePOIScore(nextPOI, goal);
                     double newScore = entry.score + poiScore;
-                    double newCost = entry.totalCost + nextPOI.avgCost();
                     double newTravelTime = entry.totalTravelTime + travelTime;
 
                     var newVisited = new ArrayList<>(entry.visited);

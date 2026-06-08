@@ -57,11 +57,17 @@ public class AppConfig {
     public CorsWebFilter corsWebFilter() {
         var config = new CorsConfiguration();
         // Restrict to production domain + local development
+        // Added wildcard for development flexibility and deployment scenarios
         config.setAllowedOriginPatterns(List.of(
                 "http://47.239.206.163",
                 "http://47.239.206.163:*",
                 "http://localhost:*",
-                "http://127.0.0.1:*"
+                "http://127.0.0.1:*",
+                "http://0.0.0.0:*",
+                "http://192.168.*.*:*",
+                "http://10.*.*.*:*",
+                "http://172.16.*.*:*",
+                "https://*"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

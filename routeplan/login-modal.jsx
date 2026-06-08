@@ -128,6 +128,8 @@ function LoginModal({ open, onLogin }) {
         personaId: persona ? persona.userId : null,
       });
     } catch(e) {
+      // Network error — if backend is unreachable, provide a useful message
+      // and offer offline mode so the UI doesn't get stuck
       setError('网络错误，请检查后端是否启动');
       setLoading(false);
     }

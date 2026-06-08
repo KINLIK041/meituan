@@ -36,10 +36,14 @@ public class MockDataService implements DataService {
         // Enrich with realistic queue times, UGC data, and additional categories
         beijing = enrichPOIs(beijing, "北京");
         shanghai = enrichPOIs(shanghai, "上海");
+        // Expand datasets with programmatically generated diverse POIs
+        beijing.addAll(generateDiversePOIs("北京", 312));
+        shanghai.addAll(generateDiversePOIs("上海", 312));
         poiByCity.put("北京", beijing);
         poiByCity.put("上海", shanghai);
         beijing.forEach(p -> poiById.put(p.id(), p));
         shanghai.forEach(p -> poiById.put(p.id(), p));
+        log.info("MockDataService initialized: {} Beijing POIs, {} Shanghai POIs", beijing.size(), shanghai.size());
     }
 
     /** Enrich mock POIs with realistic queue times, UGC data, and extra category POIs. */
@@ -1995,5 +1999,141 @@ public class MockDataService implements DataService {
                         4.5, 298, 0, LocalTime.of(0, 0), LocalTime.of(23, 59), 120,
                         List.of("演出", "宋城", "歌舞", "上海历史", "视听盛宴"), "images/stores/photo-400-1.jpg", "宋城演艺打造的上海主题大秀，一小时穿梭上海千年历史", 90)
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Programmatic POI Generator — creates diverse, realistic POIs
+    // to ensure category coverage for constraint-based route planning.
+    // ═══════════════════════════════════════════════════════════════
+
+    private static final Random RNG = new Random(42); // fixed seed for reproducibility
+
+    private List<POI> generateDiversePOIs(String city, int count) {
+        var pois = new ArrayList<POI>();
+        int baseId = "北京".equals(city) ? 300 : 400;
+        var districts = "北京".equals(city)
+            ? List.of("朝阳区", "海淀区", "东城区", "西城区", "丰台区", "通州区", "大兴区", "石景山区", "昌平区")
+            : List.of("黄浦区", "浦东新区", "静安区", "徐汇区", "长宁区", "杨浦区", "虹口区", "普陀区", "闵行区");
+
+        double[][] bjLatLng = {{39.92,116.40},{39.97,116.33},{39.95,116.42},{39.91,116.37},{39.86,116.28},{39.90,116.65},{39.73,116.33},{39.91,116.22},{40.08,116.31}};
+        double[][] shLatLng = {{31.23,121.47},{31.22,121.54},{31.23,121.44},{31.20,121.43},{31.22,121.41},{31.27,121.52},{31.26,121.49},{31.25,121.42},{31.12,121.38}};
+        double[][] centers = "北京".equals(city) ? bjLatLng : shLatLng;
+        String prefix = "北京".equals(city) ? "bj" : "sh";
+
+        // Diverse category templates with realistic names
+        var templates = List.of(
+            // RESTAURANT — 日料 (13)
+            tp("RESTAURANT","日料",List.of("鮨·{d}", "一幸庵{d}", "鸟政·{d}", "{d}居酒屋", "鮨心和{d}", "银座{d}·日料", "割烹{d}", "天妇罗·{d}", "炉端烧{d}", "鳗鱼·{d}"),120,500,3.8,4.9,List.of("日料","日式","新鲜","精致")),
+            // RESTAURANT — 火锅 (13)
+            tp("RESTAURANT","火锅",List.of("{d}老火锅", "蜀九香·{d}", "小龙坎{d}", "海底捞·{d}", "捞王{d}", "{d}潮汕牛肉", "老北京涮肉·{d}", "谭鸭血{d}店", "哥老官{d}", "八合里{d}"),80,200,3.6,4.7,List.of("火锅","聚会","热气腾腾")),
+            // RESTAURANT — 粤菜 (13)
+            tp("RESTAURANT","粤菜",List.of("{d}茶餐厅", "翠园·{d}", "利苑·{d}", "点都德{d}", "陶陶居{d}", "{d}烧腊专门店", "金翠河{d}", "唐宫·{d}"),80,250,3.7,4.8,List.of("粤菜","清淡","精致")),
+            // RESTAURANT — 川菜 (13)
+            tp("RESTAURANT","川菜",List.of("{d}川菜馆", "眉州东坡·{d}", "撒椒{d}", "{d}水煮鱼", "大蓉和{d}", "巴国布衣{d}", "川味观·{d}", "陈麻婆{d}"),50,150,3.5,4.6,List.of("川菜","麻辣","过瘾")),
+            // RESTAURANT — 西餐 (13)
+            tp("RESTAURANT","西餐",List.of("{d}牛排馆", "The {d} Kitchen", "Casa {d}", "{d} Trattoria", "Bistro {d}", "Maison {d}", "{d}·法餐", "Le {d}"),150,500,3.8,4.8,List.of("西餐","精致","氛围好","约会")),
+            // RESTAURANT — 韩餐 (13)
+            tp("RESTAURANT","韩餐",List.of("{d}韩式烤肉", "本家·{d}", "{d}炸鸡啤酒", "火炉火{d}", "姜虎东{d}", "王妃家{d}"),70,180,3.5,4.5,List.of("韩餐","烤肉","热闹")),
+            // RESTAURANT — 东南亚 (13)
+            tp("RESTAURANT","东南亚菜",List.of("{d}泰餐厅", "Pho {d}", "芽庄{d}", "咖喱·{d}", "越色{d}", "金胡椒{d}"),80,220,3.6,4.6,List.of("东南亚","酸辣","异域风情")),
+            // RESTAURANT — 烧烤 (13)
+            tp("RESTAURANT","烧烤",List.of("{d}烤肉专门店", "木屋烧烤·{d}", "很久以前{d}", "丰茂{d}", "{d}串吧", "望京小腰{d}"),60,150,3.4,4.5,List.of("烧烤","夜宵","啤酒")),
+            // RESTAURANT — 面食/小吃 (13)
+            tp("RESTAURANT","面食小吃",List.of("{d}面馆", "老字号·{d}", "百年{d}", "{d}小笼包", "地道{d}小吃", "{d}生煎坊", "吴越{d}", "耳光{d}"),15,60,3.5,4.6,List.of("面食","小吃","地道","性价比")),
+            // RESTAURANT — 私房菜 (13)
+            tp("RESTAURANT","私房菜",List.of("{d}私房菜", "巷里·{d}", "隐世{d}", "家宴·{d}", "一桌·{d}"),120,350,4.0,4.9,List.of("私房菜","小众","预约制","安静")),
+            // CAFE — 咖啡 (13)
+            tp("CAFE","咖啡",List.of("{d} COFFEE", "Seesaw·{d}", "M Stand·{d}", "%Arabica·{d}", "Metal Hands·{d}", "Café {d}", "三顿半·{d}"),25,60,3.8,4.7,List.of("咖啡","安静","拍照好看","适合发呆")),
+            // CAFE — 茶馆 (13)
+            tp("CAFE","茶馆",List.of("{d}茶室", "隐溪·{d}", "一拙·{d}", "大可堂·{d}", "{d}茶馆"),50,150,4.0,4.8,List.of("茶馆","安静","雅致","中式")),
+            // CAFE — 甜品 (13)
+            tp("CAFE","甜品",List.of("{d}甜品屋", "Lady M·{d}", "蔡嘉·{d}", "宝珠奶酪{d}", "布歌东京{d}", "满记·{d}"),30,80,3.7,4.6,List.of("甜品","少女心","好看好吃")),
+            // CAFE — 酒吧 (13)
+            tp("CAFE","酒吧",List.of("{d} BAR", "Speak Low·{d}", "Sober Company·{d}", "The {d} Room", "Union {d}", "Bar {d}"),80,300,3.9,4.8,List.of("酒吧","氛围好","约会","拍照好看")),
+            // ATTRACTION — 公园/自然 (13)
+            tp("ATTRACTION","公园",List.of("{d}公园", "{d}植物园", "{d}湿地", "{d}森林公园", "{d}湖公园"),0,30,4.0,4.8,List.of("户外","散步","拍照","自然")),
+            // ATTRACTION — 博物馆/美术馆 (13)
+            tp("ATTRACTION","博物馆",List.of("{d}博物馆", "{d}艺术馆", "{d}美术馆", "{d}展览中心", "{d}当代艺术馆"),20,100,4.2,4.9,List.of("展览","文化","安静","拍照好看")),
+            // ATTRACTION — 历史/建筑 (13)
+            tp("ATTRACTION","历史建筑",List.of("{d}故居", "{d}旧址", "{d}古寺", "{d}古建筑", "{d}历史街区"),0,20,4.0,4.7,List.of("历史","文化","拍照","打卡")),
+            // SHOPPING — 商场 (13)
+            tp("SHOPPING","商场",List.of("{d}购物中心", "{d}广场", "{d}天地", "{d}汇", "{d}百货", "新·{d}"),0,500,3.8,4.6,List.of("购物","逛街","空调","一站式")),
+            // SHOPPING — 书店/文创 (13)
+            tp("SHOPPING","书店文创",List.of("{d}书店", "言几又·{d}", "钟书阁·{d}", "单向空间·{d}", "PageOne·{d}"),20,80,4.2,4.8,List.of("书店","安静","文艺","拍照好看")),
+            // SHOPPING — 买手店 (13)
+            tp("SHOPPING","买手店",List.of("{d}买手店", "栋梁·{d}", "Labelhood·{d}", "Assemble·{d}"),100,500,3.7,4.5,List.of("买手店","小众","设计师","时尚")),
+            // ENTERTAINMENT — 影院/KTV (13)
+            tp("ENTERTAINMENT","影院KTV",List.of("{d}影城", "IMAX·{d}", "纯K·{d}", "好乐迪{d}", "麦乐迪{d}", "UME·{d}"),50,200,3.5,4.4,List.of("娱乐","聚会","放松")),
+            // ENTERTAINMENT — 密室/剧本杀 (13)
+            tp("ENTERTAINMENT","密室逃脱",List.of("{d}密室", "X先生·{d}", "屋有岛·{d}", "白兔子{d}"),100,250,4.0,4.7,List.of("密室","烧脑","团建","刺激")),
+            // ENTERTAINMENT — 演出场馆 (13)
+            tp("ENTERTAINMENT","演出",List.of("{d} LIVEHOUSE", "MAO·{d}", "Blue Note·{d}", "ModernSky·{d}"),80,300,4.0,4.8,List.of("演出","音乐","现场","氛围好")),
+            // CULTURE — 展览/文创空间 (13)
+            tp("CULTURE","文创空间",List.of("{d}文创园", "{d}艺术区", "{d}创意空间", "UCCA·{d}"),30,120,4.0,4.7,List.of("展览","文创","打卡","文艺"))
+        );
+
+        int idCounter = baseId;
+        int photoBase = "北京".equals(city) ? 501 : 813;
+        int catIdx = 0;
+        int POIS_PER_CAT = count / templates.size();
+        for (var t : templates) {
+            int countPerTemplate = POIS_PER_CAT;
+            for (int i = 0; i < countPerTemplate; i++) {
+                var distIdx = RNG.nextInt(districts.size());
+                double[] center = centers[distIdx];
+                double lat = center[0] + (RNG.nextDouble() - 0.5) * 0.06;
+                double lng = center[1] + (RNG.nextDouble() - 0.5) * 0.06;
+                String name = t.names.get(RNG.nextInt(t.names.size())).replace("{d}", districtShort(districts.get(distIdx)));
+                double rating = Math.round((t.minRating + RNG.nextDouble() * (t.maxRating - t.minRating)) * 10) / 10.0;
+                double cost = t.minCost + RNG.nextInt(t.maxCost - t.minCost + 1);
+                int queue = RNG.nextInt(25);
+                int visitMin = 40 + RNG.nextInt(80);
+                int openH = clampHour(8 + RNG.nextInt(4));
+                int closeH = clampHour(20 + RNG.nextInt(5));
+                int photoNum = photoBase + catIdx * POIS_PER_CAT + i;
+                String id = prefix + "-" + idCounter;
+                idCounter++;
+
+                var ugcTags = new ArrayList<>(t.tags);
+                if (rating >= 4.5) ugcTags.addAll(List.of("口碑好","回头客多"));
+                if (queue > 15) ugcTags.add("排队久");
+                if (queue <= 5) ugcTags.add("不用排队");
+                var riskTags = new ArrayList<String>();
+                if (queue > 15) riskTags.add("排队久");
+                if (cost > 300) riskTags.add("价格偏高");
+                String ugcSummary = rating >= 4.6 ? "顾客普遍好评，环境和服务都很不错，值得专程前往"
+                    : rating >= 4.2 ? "体验不错，性价比适中，适合日常消费"
+                    : "中规中矩的选择，偶尔会有惊喜";
+
+                pois.add(new POI(id, name, t.category, t.subCategory,
+                    lat, lng, districts.get(distIdx) + "某路" + RNG.nextInt(999) + "号",
+                    districts.get(distIdx), city, rating, cost, queue,
+                    LocalTime.of(openH, 0), LocalTime.of(closeH, 0), visitMin,
+                    new ArrayList<>(t.tags), "images/stores/photo-" + String.format("%04d", photoNum) + "-1.jpg",
+                    name + " — " + t.subCategory + "好去处", 60 + RNG.nextInt(40),
+                    ugcTags, ugcSummary, riskTags));
+            }
+            catIdx++;
+        }
+        log.info("Generated {} diverse POIs for {}", pois.size(), city);
+        return pois;
+    }
+
+    /** Clamp hour value to valid range [0, 23] for LocalTime. */
+    private static int clampHour(int hour) {
+        return Math.min(23, Math.max(0, hour % 24));
+    }
+
+    private static String districtShort(String district) {
+        return district.replace("区","").replace("新区","");
+    }
+
+    // Template helper record
+    private record POITemplate(String category, String subCategory, List<String> names,
+                               int minCost, int maxCost, double minRating, double maxRating,
+                               List<String> tags) {}
+    private static POITemplate tp(String cat, String sub, List<String> names,
+                                   int minC, int maxC, double minR, double maxR, List<String> tags) {
+        return new POITemplate(cat, sub, names, minC, maxC, minR, maxR, tags);
     }
 }

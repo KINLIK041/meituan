@@ -444,6 +444,7 @@ function NeedCompletionCard({ scene, answers, onAnswer, onSkip, onEditAnswer }) 
             {currentQ.label}
           </div>
           {!customMode && (
+            <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               {currentQ.options.map((opt) => (
                 <button
@@ -466,6 +467,23 @@ function NeedCompletionCard({ scene, answers, onAnswer, onSkip, onEditAnswer }) 
                   {opt}
                 </button>
               ))}
+            </div>
+            {/* 如果选项中已有"输入地点"/"自定义"入口，就不重复显示自定义输入按钮 */}
+            {!currentQ.options.some(function(o) { return o === '输入地点' || o === '自定义'; }) && (
+            <button
+              onClick={function() { setCustomMode(true); }}
+              style={{
+                width: '100%', marginTop: 8, padding: '10px 12px', borderRadius: 10,
+                background: '#FFF', border: '1.5px dashed #D1D1D6',
+                fontSize: 12.5, fontWeight: 500, color: '#8e8e93',
+                cursor: 'pointer', fontFamily: 'inherit',
+                textAlign: 'center', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              }}
+            >
+              <Icon name="Pencil" size={11} color="#8e8e93" /> 自定义输入
+            </button>
+            )}
             </div>
           )}
 
