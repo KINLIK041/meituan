@@ -938,15 +938,30 @@ function ChatScreen({
 
   // Scroll to top when new routes appear (not on adjustment loading)
   var prevStage = useRefChat(chatState.stage);
+  var wasRouteBeforeGenerating = useRefChat(false);
   useEffectChat(() => {
     var was = prevStage.current;
     prevStage.current = chatState.stage;
-    // Only scroll to top when routes first appear (completing/generating/welcome → route)
-    // NOT when adjusting (route → generating → route)
-    var fromNonRoute = was !== 'route';
+
+    // Track whether we were in 'route' stage before entering 'generating'
+    // This distinguishes "first route generation" from "adjustment regeneration"
+    if (was === 'route' && chatState.stage === 'generating') {
+      wasRouteBeforeGenerating.current = true;
+    }
+
     var toRoute = chatState.stage === 'route';
-    if (fromNonRoute && toRoute && scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
+    if (toRoute && scrollRef.current) {
+      if (wasRouteBeforeGenerating.current) {
+        // Adjustment: scroll to bottom to show the new route result
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        wasRouteBeforeGenerating.current = false;
+      } else if (was !== 'route') {
+        // First route generation: scroll to top
+        scrollRef.current.scrollTop = 0;
+      }
+    }
+    if (chatState.stage !== 'generating' && chatState.stage !== 'route') {
+      wasRouteBeforeGenerating.current = false;
     }
   }, [chatState.stage]);
 
